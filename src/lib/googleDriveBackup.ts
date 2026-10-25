@@ -10,6 +10,8 @@ import {
 } from '../types/fleet';
 import { roundCurrency, roundKm } from './calculations';
 
+import { withRetry } from './retry';
+
 export const FZEELOG_DRIVE_FOLDER_NAME = 'FzeeLog Fleet Backups';
 
 export interface DriveFileMetadata {
@@ -374,15 +376,17 @@ export async function uploadJsonSnapshotToDrive(params: {
   const fileName = `FzeeLog_Backup_${safeDate}.json`;
   const description = `FzeeLog Snapshot (${params.snapshot.generatedAtKolkata} IST) | Vehicles: ${params.snapshot.summaryCounts.vehicles}, Shifts: ${params.snapshot.summaryCounts.dailyLogbookEntries}, Net: Rs.${params.snapshot.financialSummary.netLogbookEarningsInr}`;
 
-  return uploadMultipartFileToDrive({
-    accessToken: params.accessToken,
-    folderId: params.folderId,
-    fileName,
-    mimeType: 'application/json',
-    contentString: JSON.stringify(params.snapshot, null, 2),
-    description,
-    existingFileIdToOverwrite: params.existingFileIdToOverwrite,
-  });
+  return withRetry(() =>
+    uploadMultipartFileToDrive({
+      accessToken: params.accessToken,
+      folderId: params.folderId,
+      fileName,
+      mimeType: 'application/json',
+      contentString: JSON.stringify(params.snapshot, null, 2),
+      description,
+      existingFileIdToOverwrite: params.existingFileIdToOverwrite,
+    })
+  );
 }
 
 export async function uploadCsvLogbookToDrive(params: {
@@ -396,14 +400,16 @@ export async function uploadCsvLogbookToDrive(params: {
   const csvString = build15ColCsvString(params.entries);
   const description = `FzeeLog 15-Column Daily Logbook CSV (${params.entries.length} shifts) — ${params.businessName}`;
 
-  return uploadMultipartFileToDrive({
-    accessToken: params.accessToken,
-    folderId: params.folderId,
-    fileName,
-    mimeType: 'text/csv',
-    contentString: csvString,
-    description,
-  });
+  return withRetry(() =>
+    uploadMultipartFileToDrive({
+      accessToken: params.accessToken,
+      folderId: params.folderId,
+      fileName,
+      mimeType: 'text/csv',
+      contentString: csvString,
+      description,
+    })
+  );
 }
 
 export async function downloadDriveBackupJson(
