@@ -68,6 +68,7 @@ service cloud.firestore {
           'defaultDriverShareFixed',
           'platformEarningsBasis',
           'includeDriverShareInExpenses',
+          'notificationSchedulerConfig',
           'createdAt',
           'updatedAt'
         ])
@@ -91,6 +92,7 @@ service cloud.firestore {
         && (!('defaultDriverShareFixed' in data) || isValidNumber(data.defaultDriverShareFixed, 0, 1000000))
         && (!('platformEarningsBasis' in data) || data.platformEarningsBasis in ['GROSS', 'NET_OF_COMMISSION'])
         && (!('includeDriverShareInExpenses' in data) || data.includeDriverShareInExpenses is bool)
+        && (!('notificationSchedulerConfig' in data) || isValidString(data.notificationSchedulerConfig, 0, 2000))
         && isValidString(data.createdAt, 1, 40)
         && isValidString(data.updatedAt, 1, 40);
     }

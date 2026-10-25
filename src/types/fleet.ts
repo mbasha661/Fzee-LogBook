@@ -216,6 +216,8 @@ export interface UserProfile {
    * separately and Net Earnings is identical either way.
    */
   includeDriverShareInExpenses?: boolean;
+  /** JSON-encoded SchedulerSettings for the server-side notification engine. */
+  notificationSchedulerConfig?: string;
   currency: 'INR';
   distanceUnit: 'km';
   timezone: 'Asia/Kolkata';

@@ -38,6 +38,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFleet } from '../context/FleetContext';
+import { NotificationSchedulerPanel } from './NotificationSchedulerPanel';
 import {
   AccountMode,
   ComplianceDocument,
@@ -5071,6 +5072,9 @@ export const GoogleDriveAndNotificationsView: React.FC<{
             </pre>
           </div>
         )}
+
+        {/* Server-side Scheduled Notification Engine */}
+        <NotificationSchedulerPanel />
 
         {/* 10-Day, 5-Day & 1-Day Statutory Expiry Milestone Strip */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
