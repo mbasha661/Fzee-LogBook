@@ -20,6 +20,7 @@ import { AttendanceStatus, DailyLogbookEntry } from '../types/fleet';
 import {
   aggregateLogbookByPeriod,
   calculateLogbookFinancials,
+  resolveCalculationOptions,
   formatINR,
   formatKm,
   getTodayKolkataDate,
@@ -57,7 +58,7 @@ const DEFAULT_15_COL_HEADERS = {
   maintenance: '13. Maintenance',
   totalExpenses: '14. Total Expenses',
   sourceRemarks: '15. Source/Remarks',
-  netBusinessEarnings: 'Net Business',
+  netBusinessEarnings: 'Net Earnings',
 };
 
 export const LogbookView: React.FC<{
@@ -295,6 +296,9 @@ export const LogbookView: React.FC<{
     attendance: 'Present' as AttendanceStatus,
     earnings: 0,
     driverSharePct: defaultSharePct,
+    manualUnitPrice: 0,
+    manualDriverShare: 0,
+    odometerCorrectionReason: '',
     gasFuel: 0,
     redTaxi: 0,
     toll: 0,
@@ -306,20 +310,32 @@ export const LogbookView: React.FC<{
   const [formWarnings, setFormWarnings] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const calcOptions = useMemo(
+    () => resolveCalculationOptions(profile),
+    [profile]
+  );
+
   const liveCalc = useMemo(
     () =>
-      calculateLogbookFinancials({
-        startingKm: formState.startingKm,
-        endingKm: formState.endingKm,
-        earnings: formState.earnings,
-        driverSharePct: formState.driverSharePct,
-        gasFuel: formState.gasFuel,
-        redTaxi: formState.redTaxi,
-        toll: formState.toll,
-        maintenance: formState.maintenance,
-        otherExpenses: formState.otherExpenses,
-      }),
-    [formState]
+      calculateLogbookFinancials(
+        {
+          startingKm: formState.startingKm,
+          endingKm: formState.endingKm,
+          earnings: formState.earnings,
+          driverSharePct: formState.driverSharePct,
+          gasFuel: formState.gasFuel,
+          redTaxi: formState.redTaxi,
+          toll: formState.toll,
+          maintenance: formState.maintenance,
+          otherExpenses: formState.otherExpenses,
+        },
+        {
+          ...calcOptions,
+          manualUnitPrice: Number(formState.manualUnitPrice) || 0,
+          manualDriverShare: Number(formState.manualDriverShare) || 0,
+        }
+      ),
+    [formState, calcOptions]
   );
 
   const filteredAndSortedEntries = useMemo(() => {
@@ -483,6 +499,9 @@ export const LogbookView: React.FC<{
       attendance: 'Present',
       earnings: 0,
       driverSharePct: assignedDriver?.defaultSharePct ?? defaultSharePct,
+      manualUnitPrice: 0,
+      manualDriverShare: 0,
+      odometerCorrectionReason: '',
       gasFuel: 0,
       redTaxi: 0,
       toll: 0,
@@ -507,6 +526,9 @@ export const LogbookView: React.FC<{
       attendance: entry.attendance,
       earnings: entry.earnings,
       driverSharePct: entry.driverSharePct,
+      manualUnitPrice: 0,
+      manualDriverShare: 0,
+      odometerCorrectionReason: entry.odometerCorrectionReason || '',
       gasFuel: entry.gasFuel,
       redTaxi: entry.redTaxi,
       toll: entry.toll,
@@ -578,6 +600,9 @@ export const LogbookView: React.FC<{
           attendance: formState.attendance,
           earnings: formState.earnings,
           driverSharePct: formState.driverSharePct,
+          manualUnitPrice: formState.manualUnitPrice,
+          manualDriverShare: formState.manualDriverShare,
+          odometerCorrectionReason: formState.odometerCorrectionReason,
           gasFuel: formState.gasFuel,
           redTaxi: formState.redTaxi,
           toll: formState.toll,
@@ -1232,16 +1257,19 @@ export const LogbookView: React.FC<{
                     const isInlineEditing =
                       inlineRowId === entry.id && inlineDraft !== null;
                     const previewMath = isInlineEditing
-                      ? calculateLogbookFinancials({
-                          startingKm: inlineDraft.startingKm,
-                          endingKm: inlineDraft.endingKm,
-                          earnings: inlineDraft.earnings,
-                          driverSharePct: inlineDraft.driverSharePct,
-                          gasFuel: inlineDraft.gasFuel,
-                          redTaxi: inlineDraft.redTaxi,
-                          toll: inlineDraft.toll,
-                          maintenance: inlineDraft.maintenance,
-                        })
+                      ? calculateLogbookFinancials(
+                          {
+                            startingKm: inlineDraft.startingKm,
+                            endingKm: inlineDraft.endingKm,
+                            earnings: inlineDraft.earnings,
+                            driverSharePct: inlineDraft.driverSharePct,
+                            gasFuel: inlineDraft.gasFuel,
+                            redTaxi: inlineDraft.redTaxi,
+                            toll: inlineDraft.toll,
+                            maintenance: inlineDraft.maintenance,
+                          },
+                          calcOptions
+                        )
                       : null;
 
                     return (
@@ -2213,6 +2241,79 @@ export const LogbookView: React.FC<{
                     className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg"
                   />
                 </div>
+                {(() => {
+                  const selVeh = vehicles.find(
+                    (v) => v.id === formState.vehicleId
+                  );
+                  const needsReason =
+                    !editingEntry &&
+                    selVeh !== undefined &&
+                    Number(formState.startingKm) !==
+                      Number(selVeh.currentOdometerKm);
+                  return needsReason ? (
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-amber-800 mb-1">
+                        Odometer Correction Reason (required - Starting KM{' '}
+                        {formState.startingKm} differs from vehicle odometer{' '}
+                        {selVeh.currentOdometerKm})
+                      </label>
+                      <input
+                        type="text"
+                        minLength={3}
+                        maxLength={300}
+                        placeholder="e.g. Odometer reset after cluster replacement"
+                        value={formState.odometerCorrectionReason}
+                        onChange={(e) =>
+                          setFormState({
+                            ...formState,
+                            odometerCorrectionReason: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-sm border border-amber-400 bg-amber-50 rounded-lg"
+                      />
+                    </div>
+                  ) : null;
+                })()}
+                {calcOptions.unitPriceMode === 'MANUAL' && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      8. Unit Price (Manual, INR)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formState.manualUnitPrice}
+                      onChange={(e) =>
+                        setFormState({
+                          ...formState,
+                          manualUnitPrice: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                )}
+                {calcOptions.driverShareMode === 'MANUAL' && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      9. Driver Share (Manual, INR)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formState.manualDriverShare}
+                      onChange={(e) =>
+                        setFormState({
+                          ...formState,
+                          manualDriverShare: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                )}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     15. Source / Remarks
@@ -2245,15 +2346,29 @@ export const LogbookView: React.FC<{
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-500">
-                    8. Unit Price (Earnings ÷ KM)
+                    8.{' '}
+                    {calcOptions.unitPriceMode === 'MANUAL'
+                      ? 'Unit Price (Manual)'
+                      : calcOptions.unitPriceMode === 'PER_DAY_DERIVED'
+                        ? 'Unit Price (Per Day)'
+                        : 'Unit Price (Earnings ÷ KM)'}
                   </p>
                   <p className="text-base font-bold font-mono text-slate-900">
-                    {formatINR(liveCalc.unitPrice)}/km
+                    {formatINR(liveCalc.unitPrice)}
+                    {calcOptions.unitPriceMode === 'PER_KM_DERIVED'
+                      ? '/km'
+                      : ''}
                   </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-500">
-                    9. Driver Share ({formState.driverSharePct}%)
+                    9. Driver Share (
+                    {calcOptions.driverShareMode === 'FIXED_DAILY'
+                      ? 'Fixed'
+                      : calcOptions.driverShareMode === 'MANUAL'
+                        ? 'Manual'
+                        : `${formState.driverSharePct}%`}
+                    )
                   </p>
                   <p className="text-base font-bold font-mono text-slate-900">
                     {formatINR(liveCalc.driverShare)}

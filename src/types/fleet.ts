@@ -146,6 +146,29 @@ export interface OrganizationMember {
   updatedAt: string;
 }
 
+/**
+ * How the Unit Price column is interpreted. Never hard-coded:
+ * - PER_KM_DERIVED: Earnings / KM-DAY (classic rate per kilometre)
+ * - PER_DAY_DERIVED: Earnings per day (flat daily figure)
+ * - MANUAL: entered by the user per entry (e.g. an agreed package rate)
+ */
+export type UnitPriceMode = 'PER_KM_DERIVED' | 'PER_DAY_DERIVED' | 'MANUAL';
+
+/**
+ * How the Driver Share column is computed:
+ * - PERCENTAGE: Eligible Earnings x configured percentage
+ * - FIXED_DAILY: a fixed INR amount per logbook entry
+ * - MANUAL: entered by the user per entry
+ */
+export type DriverShareMode = 'PERCENTAGE' | 'FIXED_DAILY' | 'MANUAL';
+
+/**
+ * Whether the Earnings column is entered gross (platform commission such as
+ * Red Taxi is still inside it and must be deducted) or net (commission was
+ * already taken out by the platform, so it must NOT be deducted again).
+ */
+export type PlatformEarningsBasis = 'GROSS' | 'NET_OF_COMMISSION';
+
 export interface CustomLogbookHeaders {
   sno: string;
   date: string;
@@ -179,6 +202,20 @@ export interface UserProfile {
   alertMilestonesDays?: number[];
   customLogbookHeaders?: Partial<CustomLogbookHeaders>;
   defaultDriverSharePct: number;
+  /** Unit Price interpretation. Default PER_KM_DERIVED. */
+  unitPriceMode?: UnitPriceMode;
+  /** Driver share computation mode. Default PERCENTAGE. */
+  driverShareMode?: DriverShareMode;
+  /** Fixed daily driver share in INR, used when driverShareMode is FIXED_DAILY. */
+  defaultDriverShareFixed?: number;
+  /** Gross vs net platform earnings. Default GROSS (commission deducted once). */
+  platformEarningsBasis?: PlatformEarningsBasis;
+  /**
+   * Spec default (true): Total Expenses = Driver Share + Gas/Fuel + Red Taxi
+   * + Toll + Maintenance (+ Other). When false, driver share is reported
+   * separately and Net Earnings is identical either way.
+   */
+  includeDriverShareInExpenses?: boolean;
   currency: 'INR';
   distanceUnit: 'km';
   timezone: 'Asia/Kolkata';
@@ -271,6 +308,8 @@ export interface DailyLogbookEntry {
   totalExpenses: number;
   netBusinessEarnings: number;
   sourceRemarks: string;
+  /** Required when an entry manually corrects odometer continuity. */
+  odometerCorrectionReason?: string;
   createdAt: string;
   updatedAt: string;
 }

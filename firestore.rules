@@ -63,6 +63,11 @@ service cloud.firestore {
           'intendedGoogleDriveEmail',
           'expiryAlertDays',
           'serviceWarningKm',
+          'unitPriceMode',
+          'driverShareMode',
+          'defaultDriverShareFixed',
+          'platformEarningsBasis',
+          'includeDriverShareInExpenses',
           'createdAt',
           'updatedAt'
         ])
@@ -81,6 +86,11 @@ service cloud.firestore {
         && isValidString(data.intendedGoogleDriveEmail, 3, 160)
         && (!('expiryAlertDays' in data) || isValidNumber(data.expiryAlertDays, 1, 180))
         && (!('serviceWarningKm' in data) || isValidNumber(data.serviceWarningKm, 100, 10000))
+        && (!('unitPriceMode' in data) || data.unitPriceMode in ['PER_KM_DERIVED', 'PER_DAY_DERIVED', 'MANUAL'])
+        && (!('driverShareMode' in data) || data.driverShareMode in ['PERCENTAGE', 'FIXED_DAILY', 'MANUAL'])
+        && (!('defaultDriverShareFixed' in data) || isValidNumber(data.defaultDriverShareFixed, 0, 1000000))
+        && (!('platformEarningsBasis' in data) || data.platformEarningsBasis in ['GROSS', 'NET_OF_COMMISSION'])
+        && (!('includeDriverShareInExpenses' in data) || data.includeDriverShareInExpenses is bool)
         && isValidString(data.createdAt, 1, 40)
         && isValidString(data.updatedAt, 1, 40);
     }
@@ -297,6 +307,11 @@ service cloud.firestore {
           'otherExpenses',
           'totalExpenses',
           'netBusinessEarnings',
+          'unitPriceMode',
+          'driverShareMode',
+          'platformEarningsBasis',
+          'driverShareIncludedInExpenses',
+          'odometerCorrectionReason',
           'sourceRemarks',
           'createdAt',
           'updatedAt'
@@ -324,6 +339,11 @@ service cloud.firestore {
         && isValidNumber(data.otherExpenses, 0, 10000000)
         && isValidNumber(data.totalExpenses, 0, 50000000)
         && isValidNumber(data.netBusinessEarnings, -50000000, 50000000)
+        && (!('unitPriceMode' in data) || data.unitPriceMode in ['PER_KM_DERIVED', 'PER_DAY_DERIVED', 'MANUAL'])
+        && (!('driverShareMode' in data) || data.driverShareMode in ['PERCENTAGE', 'FIXED_DAILY', 'MANUAL'])
+        && (!('platformEarningsBasis' in data) || data.platformEarningsBasis in ['GROSS', 'NET_OF_COMMISSION'])
+        && (!('driverShareIncludedInExpenses' in data) || data.driverShareIncludedInExpenses is bool)
+        && (!('odometerCorrectionReason' in data) || isValidString(data.odometerCorrectionReason, 3, 300))
         && isValidString(data.sourceRemarks, 0, 500)
         && isValidString(data.createdAt, 1, 40)
         && isValidString(data.updatedAt, 1, 40);

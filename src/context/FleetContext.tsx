@@ -59,7 +59,7 @@ import {
   DEMO_VEHICLES,
   DEMO_VEHICLE_MEDIA,
 } from '../lib/demoData';
-import { calculateLogbookFinancials, roundCurrency, roundKm } from '../lib/calculations';
+import { calculateLogbookFinancials, resolveCalculationOptions, roundCurrency, roundKm } from '../lib/calculations';
 
 interface FleetContextValue {
   user: User | null;
@@ -120,6 +120,11 @@ interface FleetContextValue {
         | 'alertMilestonesDays'
         | 'customLogbookHeaders'
         | 'defaultDriverSharePct'
+        | 'unitPriceMode'
+        | 'driverShareMode'
+        | 'defaultDriverShareFixed'
+        | 'platformEarningsBasis'
+        | 'includeDriverShareInExpenses'
         | 'intendedGoogleDriveEmail'
         | 'intendedDriveEmail'
         | 'expiryAlertDays'
@@ -142,6 +147,11 @@ interface FleetContextValue {
         | 'alertMilestonesDays'
         | 'customLogbookHeaders'
         | 'defaultDriverSharePct'
+        | 'unitPriceMode'
+        | 'driverShareMode'
+        | 'defaultDriverShareFixed'
+        | 'platformEarningsBasis'
+        | 'includeDriverShareInExpenses'
         | 'intendedGoogleDriveEmail'
         | 'intendedDriveEmail'
         | 'expiryAlertDays'
@@ -812,6 +822,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
         | 'alertMilestonesDays'
         | 'customLogbookHeaders'
         | 'defaultDriverSharePct'
+        | 'unitPriceMode'
+        | 'driverShareMode'
+        | 'defaultDriverShareFixed'
+        | 'platformEarningsBasis'
+        | 'includeDriverShareInExpenses'
         | 'intendedGoogleDriveEmail'
         | 'intendedDriveEmail'
         | 'expiryAlertDays'
@@ -903,6 +918,29 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
           )
         )
       ),
+      unitPriceMode:
+        updates.unitPriceMode ?? liveProfile.unitPriceMode ?? 'PER_KM_DERIVED',
+      driverShareMode:
+        updates.driverShareMode ?? liveProfile.driverShareMode ?? 'PERCENTAGE',
+      defaultDriverShareFixed: Math.min(
+        1000000,
+        Math.max(
+          0,
+          Number(
+            updates.defaultDriverShareFixed ??
+              liveProfile.defaultDriverShareFixed ??
+              0
+          )
+        )
+      ),
+      platformEarningsBasis:
+        updates.platformEarningsBasis ??
+        liveProfile.platformEarningsBasis ??
+        'GROSS',
+      includeDriverShareInExpenses:
+        updates.includeDriverShareInExpenses ??
+        liveProfile.includeDriverShareInExpenses ??
+        true,
       currency: 'INR' as const,
       distanceUnit: 'km' as const,
       timezone: 'Asia/Kolkata' as const,
@@ -1412,17 +1450,38 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       Math.max(0, Number(entryData.otherExpenses) || 0)
     );
 
-    const calc = calculateLogbookFinancials({
-      startingKm,
-      endingKm,
-      earnings,
-      driverSharePct,
-      gasFuel,
-      redTaxi,
-      toll,
-      maintenance,
-      otherExpenses,
-    });
+    // Per-entry calculation options resolve from the owner's profile
+    // settings (FzeeLogBook configurable Unit Price, driver share mode,
+    // gross-vs-net platform earnings, spec-default expense composition),
+    // with per-entry manual overrides when those modes are selected.
+    const calcOptions = resolveCalculationOptions(
+      isDemoMode ? demoProfile : liveProfile
+    );
+    const calc = calculateLogbookFinancials(
+      {
+        startingKm,
+        endingKm,
+        earnings,
+        driverSharePct,
+        gasFuel,
+        redTaxi,
+        toll,
+        maintenance,
+        otherExpenses,
+      },
+      {
+        ...calcOptions,
+        manualUnitPrice:
+          calcOptions.unitPriceMode === 'MANUAL'
+            ? Number(entryData.manualUnitPrice ?? entryData.unitPrice ?? 0) || 0
+            : undefined,
+        manualDriverShare:
+          calcOptions.driverShareMode === 'MANUAL'
+            ? Number(entryData.manualDriverShare ?? entryData.driverShare ?? 0) ||
+              0
+            : undefined,
+      }
+    );
 
     const vehReg = String(
       entryData.vehicleRegistration || entryData.vehicleRegNo || ''
@@ -1456,6 +1515,15 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       otherExpenses,
       totalExpenses: entryData.totalExpenses !== undefined ? roundCurrency(Math.max(0, Number(entryData.totalExpenses) || 0)) : calc.totalExpenses,
       netBusinessEarnings: entryData.netBusinessEarnings !== undefined ? roundCurrency(Number(entryData.netBusinessEarnings) || 0) : calc.netBusinessEarnings,
+      unitPriceMode: calc.unitPriceModeApplied,
+      driverShareMode: calc.driverShareModeApplied,
+      platformEarningsBasis: calc.commissionDeducted ? 'GROSS' : 'NET_OF_COMMISSION',
+      driverShareIncludedInExpenses: calc.driverShareIncludedInExpenses,
+      odometerCorrectionReason: String(
+        entryData.odometerCorrectionReason || ''
+      )
+        .trim()
+        .slice(0, 300),
       sourceRemarks: String(entryData.sourceRemarks || '').trim().slice(0, 500),
     };
 

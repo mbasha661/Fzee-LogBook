@@ -3,8 +3,11 @@ import {
   ComplianceDocument,
   DailyLogbookEntry,
   Driver,
+  DriverShareMode,
   NotificationLog,
+  PlatformEarningsBasis,
   ServiceRecord,
+  UnitPriceMode,
   Vehicle,
   VehicleMedia,
   VehicleProfitLossSummary,
@@ -37,6 +40,11 @@ export const VALIDATION_CONSTANTS = {
     'intendedGoogleDriveEmail',
     'expiryAlertDays',
     'serviceWarningKm',
+    'unitPriceMode',
+    'driverShareMode',
+    'defaultDriverShareFixed',
+    'platformEarningsBasis',
+    'includeDriverShareInExpenses',
     'createdAt',
     'updatedAt',
   ] as const,
@@ -216,38 +224,107 @@ export interface LogbookCalculationInput {
   otherExpenses?: number;
 }
 
+/**
+ * Optional calculation configuration. When omitted, every option falls back
+ * to the legacy FzeeLog behaviour so existing callers and tests are
+ * unaffected. The app layer passes the owner's profile settings, whose
+ * defaults follow the FzeeLogBook specification.
+ */
+export interface LogbookCalculationOptions {
+  /** Unit Price interpretation. Legacy default: PER_KM_DERIVED. */
+  unitPriceMode?: UnitPriceMode;
+  /** Unit Price value entered by the user (MANUAL mode only). */
+  manualUnitPrice?: number;
+  /** Driver share computation mode. Legacy default: PERCENTAGE. */
+  driverShareMode?: DriverShareMode;
+  /** Fixed daily share in INR (FIXED_DAILY mode only). */
+  driverShareFixedAmount?: number;
+  /** Share amount entered by the user (MANUAL mode only). */
+  manualDriverShare?: number;
+  /**
+   * GROSS (legacy default): Earnings includes the platform commission, so
+   * Red Taxi is deducted as an expense. NET_OF_COMMISSION: the platform
+   * already took its cut, so Red Taxi is reported but never deducted again.
+   */
+  platformEarningsBasis?: PlatformEarningsBasis;
+  /**
+   * FzeeLogBook spec default (true): Total Expenses = Driver Share +
+   * Gas/Fuel + Red Taxi + Toll + Maintenance (+ Other). Legacy default for
+   * this function is false to keep historical callers byte-identical; the
+   * app layer passes the profile setting, which defaults to true.
+   */
+  includeDriverShareInExpenses?: boolean;
+}
+
 export interface LogbookCalculationResult {
   kmDay: number;
   unitPrice: number;
   driverShare: number;
   totalExpenses: number;
   netBusinessEarnings: number;
+  /** Which Unit Price interpretation was applied. */
+  unitPriceModeApplied: UnitPriceMode;
+  /** Which driver share mode was applied. */
+  driverShareModeApplied: DriverShareMode;
+  /** True when the Red Taxi commission was deducted inside Total Expenses. */
+  commissionDeducted: boolean;
+  /** True when Driver Share is inside Total Expenses (spec default). */
+  driverShareIncludedInExpenses: boolean;
 }
 
 /**
- * Exact logbook formulas required by FzeeLog specification:
- * - KM/DAY = Ending KM − Starting KM
- * - Unit Price = Earnings ÷ KM/DAY, when KM/DAY > 0
- * - Driver Share = Eligible Earnings × Configured Share Percentage
- * - Total Expenses = Gas/Fuel + Red Taxi + Toll + Maintenance + Other Configured Expenses
- * - Net Business Earnings = Earnings − Total Expenses − Driver Share
- * Note: Driver share is kept strictly separate from operating expense totals to avoid double-counting.
+ * Exact logbook formulas required by the FzeeLogBook specification:
+ * - KM/DAY = Ending KM - Starting KM
+ * - Unit Price = configurable (per-km derived, per-day derived, or manual)
+ * - Driver Share = fixed, percentage, or manual (configurable)
+ * - Default Total Expenses = Driver Share + Gas/Fuel + Red Taxi commission
+ *   + Toll + Maintenance (+ Other configured expenses)
+ * - Net Earnings = Gross Earnings - Total Expenses
+ * Gross-vs-net platform earnings is supported so commission is never
+ * deducted twice.
  */
 export function calculateLogbookFinancials(
-  input: LogbookCalculationInput
+  input: LogbookCalculationInput,
+  options: LogbookCalculationOptions = {}
 ): LogbookCalculationResult {
+  const unitPriceMode: UnitPriceMode = options.unitPriceMode ?? 'PER_KM_DERIVED';
+  const driverShareMode: DriverShareMode =
+    options.driverShareMode ?? 'PERCENTAGE';
+  const basis: PlatformEarningsBasis =
+    options.platformEarningsBasis ?? 'GROSS';
+  const includeShare = options.includeDriverShareInExpenses ?? false;
+
   const startingKm = roundKm(Math.max(0, Number(input.startingKm) || 0));
   const endingKm = roundKm(Math.max(0, Number(input.endingKm) || 0));
   const kmDay = roundKm(Math.max(0, endingKm - startingKm));
 
   const earnings = roundCurrency(Math.max(0, Number(input.earnings) || 0));
-  const sharePct = Math.min(
-    100,
-    Math.max(0, Number(input.driverSharePct) || 0)
-  );
 
-  const unitPrice = kmDay > 0 ? roundCurrency(earnings / kmDay) : 0;
-  const driverShare = roundCurrency((earnings * sharePct) / 100);
+  let unitPrice: number;
+  if (unitPriceMode === 'MANUAL') {
+    unitPrice = roundCurrency(Math.max(0, Number(options.manualUnitPrice) || 0));
+  } else if (unitPriceMode === 'PER_DAY_DERIVED') {
+    unitPrice = earnings;
+  } else {
+    unitPrice = kmDay > 0 ? roundCurrency(earnings / kmDay) : 0;
+  }
+
+  let driverShare: number;
+  if (driverShareMode === 'FIXED_DAILY') {
+    driverShare = roundCurrency(
+      Math.max(0, Number(options.driverShareFixedAmount) || 0)
+    );
+  } else if (driverShareMode === 'MANUAL') {
+    driverShare = roundCurrency(
+      Math.max(0, Number(options.manualDriverShare) || 0)
+    );
+  } else {
+    const sharePct = Math.min(
+      100,
+      Math.max(0, Number(input.driverSharePct) || 0)
+    );
+    driverShare = roundCurrency((earnings * sharePct) / 100);
+  }
 
   const gasFuel = roundCurrency(Math.max(0, Number(input.gasFuel) || 0));
   const redTaxi = roundCurrency(Math.max(0, Number(input.redTaxi) || 0));
@@ -259,11 +336,21 @@ export function calculateLogbookFinancials(
     Math.max(0, Number(input.otherExpenses) || 0)
   );
 
+  // Gross basis: commission still inside Earnings, deduct it once.
+  // Net basis: platform already deducted it, never deduct twice.
+  const commissionDeducted = basis === 'GROSS';
+  const commissionExpense = commissionDeducted ? redTaxi : 0;
+
   const totalExpenses = roundCurrency(
-    gasFuel + redTaxi + toll + maintenance + otherExpenses
+    (includeShare ? driverShare : 0) +
+      gasFuel +
+      commissionExpense +
+      toll +
+      maintenance +
+      otherExpenses
   );
   const netBusinessEarnings = roundCurrency(
-    earnings - totalExpenses - driverShare
+    earnings - totalExpenses - (includeShare ? 0 : driverShare)
   );
 
   return {
@@ -272,6 +359,34 @@ export function calculateLogbookFinancials(
     driverShare,
     totalExpenses,
     netBusinessEarnings,
+    unitPriceModeApplied: unitPriceMode,
+    driverShareModeApplied: driverShareMode,
+    commissionDeducted,
+    driverShareIncludedInExpenses: includeShare,
+  };
+}
+
+/**
+ * Resolves calculation options from the owner's profile settings, applying
+ * the FzeeLogBook specification defaults: Unit Price per-km derived, driver
+ * share by percentage, gross platform earnings, and Driver Share INCLUDED in
+ * the default Total Expenses column.
+ */
+export function resolveCalculationOptions(profile?: {
+  unitPriceMode?: UnitPriceMode;
+  driverShareMode?: DriverShareMode;
+  defaultDriverShareFixed?: number;
+  platformEarningsBasis?: PlatformEarningsBasis;
+  includeDriverShareInExpenses?: boolean;
+} | null): LogbookCalculationOptions {
+  return {
+    unitPriceMode: profile?.unitPriceMode ?? 'PER_KM_DERIVED',
+    driverShareMode: profile?.driverShareMode ?? 'PERCENTAGE',
+    driverShareFixedAmount: profile?.defaultDriverShareFixed ?? 0,
+    platformEarningsBasis: profile?.platformEarningsBasis ?? 'GROSS',
+    // Spec default: Driver Share is part of Total Expenses.
+    includeDriverShareInExpenses:
+      profile?.includeDriverShareInExpenses ?? true,
   };
 }
 
@@ -348,6 +463,59 @@ export function validateLogbookEntryInput(
   ) {
     errors.push(
       `Invalid odometer decrease: Ending KM (${endingKm}) cannot be less than Starting KM (${startingKm}).`
+    );
+  }
+
+  // Odometer continuity: a new entry normally starts where the vehicle
+  // odometer (or the previous entry) left off. A manual correction is
+  // allowed but must carry an explicit reason (audit trail).
+  const correctionReason = (
+    entry.odometerCorrectionReason || ''
+  ).trim();
+  if (
+    vehicleOdometerKm !== undefined &&
+    Number.isFinite(startingKm) &&
+    startingKm !== vehicleOdometerKm &&
+    !editingEntryId
+  ) {
+    if (correctionReason.length < 3) {
+      errors.push(
+        `Manual odometer correction requires a reason: Starting KM (${startingKm}) differs from the vehicle's current odometer (${vehicleOdometerKm}). Provide an odometerCorrectionReason (min 3 characters).`
+      );
+    }
+  }
+
+  // Duplicate maintenance expense posting guard: the same non-zero
+  // maintenance amount already logged for this vehicle/date is almost
+  // always a double-post (e.g. a workshop invoice entered twice).
+  const maintVal = Number(entry.maintenance) || 0;
+  if (maintVal > 0) {
+    const dupMaint = existingEntriesForVehicle.find(
+      (e) =>
+        e.id !== editingEntryId &&
+        e.vehicleId === entry.vehicleId &&
+        (e.date || e.entryDate) === dateVal &&
+        Math.abs((Number(e.maintenance) || 0) - maintVal) < 0.005
+    );
+    if (dupMaint) {
+      warnings.push(
+        `Possible duplicate maintenance posting: INR ${maintVal} maintenance is already logged for this vehicle on ${dateVal}.`
+      );
+    }
+  }
+
+  // One daily summary per vehicle/date: additional same-day entries are
+  // allowed as shifts, but the user is warned that the Daily Summary view
+  // aggregates them into a single vehicle/date row.
+  const sameDayCount = existingEntriesForVehicle.filter(
+    (e) =>
+      e.id !== editingEntryId &&
+      e.vehicleId === entry.vehicleId &&
+      (e.date || e.entryDate) === dateVal
+  ).length;
+  if (sameDayCount >= 1) {
+    warnings.push(
+      `Entry #${sameDayCount + 1} for this vehicle on ${dateVal}: the Daily Summary aggregates all same-day shifts into one vehicle/date summary.`
     );
   }
 

@@ -56,6 +56,10 @@ import {
   ServiceRecordStatus,
   ServiceRecordType,
   Vehicle,
+
+  UnitPriceMode,
+  DriverShareMode,
+  PlatformEarningsBasis,
 } from '../types/fleet';
 import {
   aggregateDriverSettlements,
@@ -6287,6 +6291,19 @@ export const SettingsAndSetupView: React.FC = () => {
   const [defaultDriverSharePct, setDefaultDriverSharePct] = useState(
     profile?.defaultDriverSharePct ?? 30
   );
+  const [unitPriceMode, setUnitPriceMode] = useState<UnitPriceMode>(
+    profile?.unitPriceMode ?? 'PER_KM_DERIVED'
+  );
+  const [driverShareMode, setDriverShareMode] = useState<DriverShareMode>(
+    profile?.driverShareMode ?? 'PERCENTAGE'
+  );
+  const [defaultDriverShareFixed, setDefaultDriverShareFixed] = useState(
+    profile?.defaultDriverShareFixed ?? 0
+  );
+  const [platformEarningsBasis, setPlatformEarningsBasis] =
+    useState<PlatformEarningsBasis>(profile?.platformEarningsBasis ?? 'GROSS');
+  const [includeDriverShareInExpenses, setIncludeDriverShareInExpenses] =
+    useState(profile?.includeDriverShareInExpenses ?? true);
   const [intendedDriveEmail, setIntendedDriveEmail] = useState(
     profile?.intendedDriveEmail ||
       profile?.intendedGoogleDriveEmail ||
@@ -6319,6 +6336,13 @@ export const SettingsAndSetupView: React.FC = () => {
       setAlertEmail(profile.alertEmail || '');
       setWhatsappNumber(profile.whatsappNumber || '');
       setDefaultDriverSharePct(profile.defaultDriverSharePct);
+      setUnitPriceMode(profile.unitPriceMode ?? 'PER_KM_DERIVED');
+      setDriverShareMode(profile.driverShareMode ?? 'PERCENTAGE');
+      setDefaultDriverShareFixed(profile.defaultDriverShareFixed ?? 0);
+      setPlatformEarningsBasis(profile.platformEarningsBasis ?? 'GROSS');
+      setIncludeDriverShareInExpenses(
+        profile.includeDriverShareInExpenses ?? true
+      );
       setIntendedDriveEmail(
         profile.intendedDriveEmail ||
           profile.intendedGoogleDriveEmail ||
@@ -6342,6 +6366,11 @@ export const SettingsAndSetupView: React.FC = () => {
       whatsappNumber,
       alertMilestonesDays: [10, 5, 1],
       defaultDriverSharePct,
+      unitPriceMode,
+      driverShareMode,
+      defaultDriverShareFixed,
+      platformEarningsBasis,
+      includeDriverShareInExpenses,
       intendedDriveEmail,
       expiryWarningDays,
       serviceWarningKm,
@@ -6592,6 +6621,119 @@ export const SettingsAndSetupView: React.FC = () => {
                 />
               </div>
             </div>
+
+            <fieldset className="border border-slate-200 rounded-lg p-3 sm:p-4">
+              <legend className="text-xs font-semibold text-slate-600 px-1">
+                Logbook Calculation Settings
+              </legend>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Unit Price Meaning
+                  </label>
+                  <select
+                    value={unitPriceMode}
+                    onChange={(e) =>
+                      setUnitPriceMode(e.target.value as UnitPriceMode)
+                    }
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="PER_KM_DERIVED">
+                      Rate per KM (Earnings / KM-DAY)
+                    </option>
+                    <option value="PER_DAY_DERIVED">
+                      Per Day (same as daily Earnings)
+                    </option>
+                    <option value="MANUAL">
+                      Manual (entered on each logbook entry)
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Driver Share Mode
+                  </label>
+                  <select
+                    value={driverShareMode}
+                    onChange={(e) =>
+                      setDriverShareMode(e.target.value as DriverShareMode)
+                    }
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="PERCENTAGE">
+                      Percentage of Earnings
+                    </option>
+                    <option value="FIXED_DAILY">Fixed Amount per Day</option>
+                    <option value="MANUAL">
+                      Manual (entered on each logbook entry)
+                    </option>
+                  </select>
+                </div>
+
+                {driverShareMode === 'FIXED_DAILY' && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Fixed Driver Share (INR / day)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1000000}
+                      step="1"
+                      value={defaultDriverShareFixed}
+                      onChange={(e) =>
+                        setDefaultDriverShareFixed(Number(e.target.value))
+                      }
+                      className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Platform Earnings (Red Taxi) Entry
+                  </label>
+                  <select
+                    value={platformEarningsBasis}
+                    onChange={(e) =>
+                      setPlatformEarningsBasis(
+                        e.target.value as PlatformEarningsBasis
+                      )
+                    }
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="GROSS">
+                      Gross - Earnings include commission, deduct it
+                    </option>
+                    <option value="NET_OF_COMMISSION">
+                      Net - commission already taken, never deduct twice
+                    </option>
+                  </select>
+                </div>
+
+                <div className="flex items-start gap-2 sm:col-span-2">
+                  <input
+                    id="includeDriverShareInExpenses"
+                    type="checkbox"
+                    checked={includeDriverShareInExpenses}
+                    onChange={(e) =>
+                      setIncludeDriverShareInExpenses(e.target.checked)
+                    }
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                  />
+                  <label
+                    htmlFor="includeDriverShareInExpenses"
+                    className="text-xs text-slate-700"
+                  >
+                    Include Driver Share inside Total Expenses (spec default:
+                    Total Expenses = Driver Share + Gas/Fuel + Red Taxi + Toll
+                    + Maintenance). When off, Driver Share is reported as a
+                    separate line. Net Earnings is identical either way.
+                  </label>
+                </div>
+              </div>
+            </fieldset>
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
