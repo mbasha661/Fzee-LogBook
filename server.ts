@@ -3,6 +3,12 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
+import {
+  NotificationScheduler,
+  type SendFn,
+  type SchedulerSettings,
+  type SchedulerSnapshot,
+} from './src/server/notificationScheduler';
 
 const PORT = 3000;
 
@@ -323,6 +329,92 @@ Return a JSON calibration profile to configure our Three.js multi-part parametri
         error: err?.message || 'Failed to generate fleet alert digest.',
       });
     }
+  });
+
+  // ---- Server-side scheduled notifications (FzeeLogBook) ----
+  // Official channels only: WhatsApp Cloud API and an SMTP/relay webhook.
+  // Personal WhatsApp Web is never automated. Consent-gated, deduplicated,
+  // retried, and every attempt is written to the delivery log.
+  const sendViaChannel: SendFn = async (channel, recipient, subject, body) => {
+    if (channel === 'whatsapp') {
+      if (!process.env.WHATSAPP_CLOUD_API_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
+        return { ok: false, notConfigured: true, error: 'WhatsApp Cloud API credentials not set.' };
+      }
+      const to = recipient.replace(/\D/g, '');
+      const normalized = to.length === 10 ? `91${to}` : to;
+      try {
+        const waRes = await fetch(
+          `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.WHATSAPP_CLOUD_API_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              to: normalized,
+              type: 'text',
+              text: { body: `*${subject}*\n\n${body}` },
+            }),
+          }
+        );
+        return waRes.ok ? { ok: true } : { ok: false, error: `WhatsApp API HTTP ${waRes.status}` };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'WhatsApp dispatch failed.' };
+      }
+    }
+    // email: dispatch through a configured SMTP/relay webhook (e.g. an SMTP
+    // bridge). No webhook configured means the channel is honestly reported
+    // as not configured instead of faking a send.
+    if (!process.env.NOTIFICATION_EMAIL_WEBHOOK_URL) {
+      return { ok: false, notConfigured: true, error: 'Email relay webhook not configured.' };
+    }
+    try {
+      const mailRes = await fetch(process.env.NOTIFICATION_EMAIL_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: recipient, subject, body }),
+      });
+      return mailRes.ok ? { ok: true } : { ok: false, error: `Email relay HTTP ${mailRes.status}` };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Email relay dispatch failed.' };
+    }
+  };
+
+  const notificationScheduler = new NotificationScheduler(sendViaChannel);
+  setInterval(() => {
+    notificationScheduler.tick().catch((err) =>
+      console.error('[notifications] scheduler tick failed:', err)
+    );
+  }, 60_000);
+
+  // Client syncs its signed-in account data + notification settings here.
+  app.post('/api/notifications/scheduler/sync', (req, res) => {
+    try {
+      const { settings, snapshot } = req.body as {
+        settings?: Partial<SchedulerSettings>;
+        snapshot?: SchedulerSnapshot;
+      };
+      if (settings) notificationScheduler.updateSettings(settings);
+      if (snapshot) notificationScheduler.updateSnapshot(snapshot);
+      res.json({
+        ok: true,
+        settings: notificationScheduler.getSettings(),
+        snapshotUpdatedAt: notificationScheduler['snapshot'] ? new Date().toISOString() : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'Scheduler sync failed.' });
+    }
+  });
+
+  app.get('/api/notifications/scheduler/delivery-log', (_req, res) => {
+    res.json({ entries: notificationScheduler.getDeliveryLog() });
+  });
+
+  app.post('/api/notifications/scheduler/tick-now', async (_req, res) => {
+    await notificationScheduler.tick();
+    res.json({ ok: true, entries: notificationScheduler.getDeliveryLog().length });
   });
 
   // 10-Day, 5-Day & 1-Day Statutory Expiry Alert Test Trigger (Email + WhatsApp)
