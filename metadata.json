@@ -1,0 +1,6 @@
+{
+  "name": "FzeeLog",
+  "description": "Full-stack vehicle logbook, commercial fleet operations, driver settlement, and compliance management system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

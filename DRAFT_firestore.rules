@@ -1,0 +1,740 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Global Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isSignedIn() && resource != null && resource.data.ownerId == request.auth.uid;
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidNumber(val, minVal, maxVal) {
+      return val is number && val >= minVal && val <= maxVal;
+    }
+
+    // Profile Validation
+    function hasRequiredProfileFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'email',
+        'displayName',
+        'businessName',
+        'defaultDriverSharePct',
+        'currency',
+        'distanceUnit',
+        'timezone',
+        'intendedGoogleDriveEmail',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidProfile(data) {
+      return hasRequiredProfileFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'email',
+          'displayName',
+          'businessName',
+          'defaultDriverSharePct',
+          'currency',
+          'distanceUnit',
+          'timezone',
+          'intendedGoogleDriveEmail',
+          'expiryAlertDays',
+          'serviceWarningKm',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.email, 3, 160)
+        && isValidString(data.displayName, 1, 100)
+        && isValidString(data.businessName, 1, 120)
+        && isValidNumber(data.defaultDriverSharePct, 0, 100)
+        && data.currency == 'INR'
+        && data.distanceUnit == 'km'
+        && data.timezone == 'Asia/Kolkata'
+        && isValidString(data.intendedGoogleDriveEmail, 3, 160)
+        && (!('expiryAlertDays' in data) || isValidNumber(data.expiryAlertDays, 1, 180))
+        && (!('serviceWarningKm' in data) || isValidNumber(data.serviceWarningKm, 100, 10000))
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // Vehicle Validation
+    function hasRequiredVehicleFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'registrationNumber',
+        'make',
+        'model',
+        'variant',
+        'manufacturingYear',
+        'colour',
+        'fuelType',
+        'transmission',
+        'vehicleType',
+        'ownershipType',
+        'purchaseDate',
+        'purchasePrice',
+        'currentOdometerKm',
+        'assignedDriverId',
+        'assignedDriverName',
+        'insuranceProvider',
+        'insuranceExpiry',
+        'fcNumber',
+        'fcExpiry',
+        'permitType',
+        'permitNumber',
+        'permitExpiry',
+        'pollutionExpiry',
+        'lastServiceDate',
+        'lastServiceOdometerKm',
+        'nextServiceDate',
+        'nextServiceOdometerKm',
+        'serviceIntervalKm',
+        'notes',
+        'status',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidVehicle(data) {
+      return hasRequiredVehicleFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'registrationNumber',
+          'make',
+          'model',
+          'variant',
+          'manufacturingYear',
+          'colour',
+          'fuelType',
+          'transmission',
+          'vehicleType',
+          'ownershipType',
+          'purchaseDate',
+          'purchasePrice',
+          'currentOdometerKm',
+          'assignedDriverId',
+          'assignedDriverName',
+          'insuranceProvider',
+          'insuranceExpiry',
+          'fcNumber',
+          'fcExpiry',
+          'permitType',
+          'permitNumber',
+          'permitExpiry',
+          'pollutionExpiry',
+          'lastServiceDate',
+          'lastServiceOdometerKm',
+          'nextServiceDate',
+          'nextServiceOdometerKm',
+          'serviceIntervalKm',
+          'notes',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.registrationNumber, 3, 25)
+        && isValidString(data.make, 1, 60)
+        && isValidString(data.model, 1, 60)
+        && isValidString(data.variant, 0, 60)
+        && isValidNumber(data.manufacturingYear, 1980, 2100)
+        && isValidString(data.colour, 1, 40)
+        && data.fuelType in ['Petrol', 'Diesel', 'CNG', 'LPG', 'Petrol+CNG', 'Electric', 'Hybrid']
+        && data.transmission in ['Manual', 'Automatic', 'AMT', 'CVT']
+        && data.vehicleType in ['Sedan', 'SUV', 'Hatchback', 'MPV', 'Commercial Van', 'Truck']
+        && data.ownershipType in ['Personal', 'Commercial', 'Leased', 'Attached']
+        && isValidString(data.purchaseDate, 0, 20)
+        && isValidNumber(data.purchasePrice, 0, 1000000000)
+        && isValidNumber(data.currentOdometerKm, 0, 10000000)
+        && isValidString(data.assignedDriverId, 0, 128)
+        && isValidString(data.assignedDriverName, 0, 100)
+        && isValidString(data.insuranceProvider, 0, 100)
+        && isValidString(data.insuranceExpiry, 0, 20)
+        && isValidString(data.fcNumber, 0, 60)
+        && isValidString(data.fcExpiry, 0, 20)
+        && isValidString(data.permitType, 0, 60)
+        && isValidString(data.permitNumber, 0, 60)
+        && isValidString(data.permitExpiry, 0, 20)
+        && isValidString(data.pollutionExpiry, 0, 20)
+        && isValidString(data.lastServiceDate, 0, 20)
+        && isValidNumber(data.lastServiceOdometerKm, 0, 10000000)
+        && isValidString(data.nextServiceDate, 0, 20)
+        && isValidNumber(data.nextServiceOdometerKm, 0, 10000000)
+        && isValidNumber(data.serviceIntervalKm, 0, 500000)
+        && isValidString(data.notes, 0, 1000)
+        && data.status in ['Active', 'Maintenance', 'Inactive', 'Archived']
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // Driver Validation
+    function hasRequiredDriverFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'fullName',
+        'phone',
+        'licenseNumber',
+        'licenseExpiry',
+        'defaultSharePct',
+        'assignedVehicleId',
+        'status',
+        'notes',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidDriver(data) {
+      return hasRequiredDriverFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'fullName',
+          'phone',
+          'licenseNumber',
+          'licenseExpiry',
+          'defaultSharePct',
+          'assignedVehicleId',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.fullName, 1, 100)
+        && isValidString(data.phone, 5, 25)
+        && isValidString(data.licenseNumber, 3, 40)
+        && isValidString(data.licenseExpiry, 0, 20)
+        && isValidNumber(data.defaultSharePct, 0, 100)
+        && isValidString(data.assignedVehicleId, 0, 128)
+        && data.status in ['Active', 'On Leave', 'Inactive', 'Archived']
+        && isValidString(data.notes, 0, 500)
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // DailyLogbookEntry Validation
+    function hasRequiredLogbookFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'vehicleId',
+        'vehicleRegistration',
+        'driverId',
+        'driverName',
+        'date',
+        'shiftNumber',
+        'startingKm',
+        'endingKm',
+        'kmDay',
+        'attendance',
+        'earnings',
+        'unitPrice',
+        'driverSharePct',
+        'driverShare',
+        'gasFuel',
+        'redTaxi',
+        'toll',
+        'maintenance',
+        'otherExpenses',
+        'totalExpenses',
+        'netBusinessEarnings',
+        'sourceRemarks',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidLogbookEntry(data) {
+      return hasRequiredLogbookFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'vehicleId',
+          'vehicleRegistration',
+          'driverId',
+          'driverName',
+          'date',
+          'shiftNumber',
+          'startingKm',
+          'endingKm',
+          'kmDay',
+          'attendance',
+          'earnings',
+          'unitPrice',
+          'driverSharePct',
+          'driverShare',
+          'gasFuel',
+          'redTaxi',
+          'toll',
+          'maintenance',
+          'otherExpenses',
+          'totalExpenses',
+          'netBusinessEarnings',
+          'sourceRemarks',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.vehicleId, 1, 128)
+        && isValidString(data.vehicleRegistration, 3, 25)
+        && isValidString(data.driverId, 0, 128)
+        && isValidString(data.driverName, 0, 100)
+        && isValidString(data.date, 8, 20)
+        && isValidNumber(data.shiftNumber, 1, 10)
+        && isValidNumber(data.startingKm, 0, 10000000)
+        && isValidNumber(data.endingKm, 0, 10000000)
+        && data.endingKm >= data.startingKm
+        && isValidNumber(data.kmDay, 0, 10000)
+        && data.attendance in ['Present', 'Half Day', 'Absent', 'Leave']
+        && isValidNumber(data.earnings, 0, 10000000)
+        && isValidNumber(data.unitPrice, 0, 1000000)
+        && isValidNumber(data.driverSharePct, 0, 100)
+        && isValidNumber(data.driverShare, 0, 10000000)
+        && isValidNumber(data.gasFuel, 0, 10000000)
+        && isValidNumber(data.redTaxi, 0, 10000000)
+        && isValidNumber(data.toll, 0, 10000000)
+        && isValidNumber(data.maintenance, 0, 10000000)
+        && isValidNumber(data.otherExpenses, 0, 10000000)
+        && isValidNumber(data.totalExpenses, 0, 50000000)
+        && isValidNumber(data.netBusinessEarnings, -50000000, 50000000)
+        && isValidString(data.sourceRemarks, 0, 500)
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // ServiceRecord Validation
+    function hasRequiredServiceFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'vehicleId',
+        'vehicleRegistration',
+        'serviceDate',
+        'serviceType',
+        'odometerKm',
+        'nextServiceDueKm',
+        'nextServiceDueDate',
+        'workshopName',
+        'invoiceNumber',
+        'partsCost',
+        'laborCost',
+        'totalCost',
+        'status',
+        'notes',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidServiceRecord(data) {
+      return hasRequiredServiceFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'vehicleId',
+          'vehicleRegistration',
+          'serviceDate',
+          'serviceType',
+          'odometerKm',
+          'nextServiceDueKm',
+          'nextServiceDueDate',
+          'workshopName',
+          'invoiceNumber',
+          'partsCost',
+          'laborCost',
+          'totalCost',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.vehicleId, 1, 128)
+        && isValidString(data.vehicleRegistration, 3, 25)
+        && isValidString(data.serviceDate, 8, 20)
+        && data.serviceType in [
+          'Periodic Service',
+          'Oil & Filter Change',
+          'Brake & Suspension',
+          'CNG/LPG Kit Calibration',
+          'Tyre & Wheel Alignment',
+          'Electrical & Battery',
+          'Body & Accident Repair',
+          'General Inspection'
+        ]
+        && isValidNumber(data.odometerKm, 0, 10000000)
+        && isValidNumber(data.nextServiceDueKm, 0, 10000000)
+        && data.nextServiceDueKm >= data.odometerKm
+        && isValidString(data.nextServiceDueDate, 0, 20)
+        && isValidString(data.workshopName, 1, 120)
+        && isValidString(data.invoiceNumber, 0, 60)
+        && isValidNumber(data.partsCost, 0, 10000000)
+        && isValidNumber(data.laborCost, 0, 10000000)
+        && isValidNumber(data.totalCost, 0, 20000000)
+        && data.status in ['Completed', 'Scheduled', 'In Progress']
+        && isValidString(data.notes, 0, 1000)
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // ComplianceDocument Validation
+    function hasRequiredComplianceFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'targetType',
+        'targetId',
+        'targetLabel',
+        'documentType',
+        'documentNumber',
+        'providerOrAuthority',
+        'issueDate',
+        'expiryDate',
+        'premiumOrFee',
+        'fileName',
+        'fileMimeType',
+        'fileSizeBytes',
+        'fileDataUrl',
+        'status',
+        'notes',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidComplianceDocument(data) {
+      return hasRequiredComplianceFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'targetType',
+          'targetId',
+          'targetLabel',
+          'documentType',
+          'documentNumber',
+          'providerOrAuthority',
+          'issueDate',
+          'expiryDate',
+          'premiumOrFee',
+          'fileName',
+          'fileMimeType',
+          'fileSizeBytes',
+          'fileDataUrl',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && data.targetType in ['Vehicle', 'Driver']
+        && isValidString(data.targetId, 1, 128)
+        && isValidString(data.targetLabel, 1, 100)
+        && data.documentType in [
+          'Insurance Policy',
+          'Fitness Certificate (FC)',
+          'Permit Certificate',
+          'Pollution Certificate (PUCC)',
+          'Registration Certificate (RC)',
+          'Tax Receipt',
+          'Driver Licence'
+        ]
+        && isValidString(data.documentNumber, 1, 80)
+        && isValidString(data.providerOrAuthority, 0, 120)
+        && isValidString(data.issueDate, 0, 20)
+        && isValidString(data.expiryDate, 8, 20)
+        && isValidNumber(data.premiumOrFee, 0, 10000000)
+        && isValidString(data.fileName, 0, 160)
+        && isValidString(data.fileMimeType, 0, 80)
+        && isValidNumber(data.fileSizeBytes, 0, 20000000)
+        && isValidString(data.fileDataUrl, 0, 150000)
+        && data.status in ['Active', 'Superseded', 'Archived']
+        && isValidString(data.notes, 0, 500)
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // VehicleMedia Validation (Phase 4)
+    function hasRequiredVehicleMediaFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'vehicleId',
+        'registrationNumber',
+        'mediaCategory',
+        'angleLabel',
+        'angleDegrees',
+        'fileName',
+        'mimeType',
+        'fileSizeBytes',
+        'dataUrl',
+        'storagePath',
+        'notes',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidVehicleMedia(data) {
+      return hasRequiredVehicleMediaFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'vehicleId',
+          'registrationNumber',
+          'mediaCategory',
+          'angleLabel',
+          'angleDegrees',
+          'fileName',
+          'mimeType',
+          'fileSizeBytes',
+          'dataUrl',
+          'storagePath',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.vehicleId, 1, 128)
+        && isValidString(data.registrationNumber, 3, 25)
+        && data.mediaCategory in ['AnglePhoto', 'Model3D', 'AICalibration']
+        && data.angleLabel in [
+          '0_Front',
+          '45_FrontLeft',
+          '90_Left',
+          '135_RearLeft',
+          '180_Rear',
+          '225_RearRight',
+          '270_Right',
+          '315_FrontRight',
+          'Custom'
+        ]
+        && isValidNumber(data.angleDegrees, 0, 360)
+        && isValidString(data.fileName, 1, 160)
+        && data.mimeType in [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'model/gltf-binary',
+          'model/gltf+json',
+          'application/json'
+        ]
+        && isValidNumber(data.fileSizeBytes, 0, 52428800)
+        && isValidString(data.dataUrl, 0, 250000)
+        && isValidString(data.storagePath, 0, 300)
+        && isValidString(data.notes, 0, 500)
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // NotificationLog Validation (Phase 5)
+    function hasRequiredNotificationLogFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'alertType',
+        'severity',
+        'targetLabel',
+        'title',
+        'message',
+        'recipientEmail',
+        'channel',
+        'status',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function isValidNotificationLog(data) {
+      return hasRequiredNotificationLogFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'alertType',
+          'severity',
+          'targetLabel',
+          'title',
+          'message',
+          'recipientEmail',
+          'channel',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && data.alertType in [
+          'StatutoryExpiry',
+          'ServiceOdometer',
+          'ServiceDate',
+          'DriverLicense',
+          'FinancialDigest',
+          'ReportExport'
+        ]
+        && data.severity in ['CRITICAL', 'WARNING', 'INFO']
+        && isValidString(data.targetLabel, 1, 120)
+        && isValidString(data.title, 1, 160)
+        && isValidString(data.message, 1, 800)
+        && isValidString(data.recipientEmail, 3, 160)
+        && data.channel in ['InApp', 'EmailDigest', 'PDFReport']
+        && data.status in ['Unread', 'Acknowledged', 'Dispatched', 'Archived']
+        && isValidString(data.createdAt, 1, 40)
+        && isValidString(data.updatedAt, 1, 40);
+    }
+
+    // AuditLog Validation
+    function hasRequiredAuditFields(data) {
+      return data.keys().hasAll([
+        'ownerId',
+        'action',
+        'entityType',
+        'entityId',
+        'summary',
+        'createdAt'
+      ]);
+    }
+
+    function isValidAuditLog(data) {
+      return hasRequiredAuditFields(data)
+        && data.keys().hasOnly([
+          'ownerId',
+          'action',
+          'entityType',
+          'entityId',
+          'summary',
+          'createdAt'
+        ])
+        && isValidString(data.ownerId, 1, 128)
+        && isValidString(data.action, 1, 80)
+        && data.entityType in [
+          'Profile',
+          'Vehicle',
+          'Driver',
+          'DailyLogbookEntry',
+          'ServiceRecord',
+          'ComplianceDocument',
+          'VehicleMedia',
+          'NotificationLog',
+          'Backup'
+        ]
+        && isValidString(data.entityId, 1, 128)
+        && isValidString(data.summary, 1, 400)
+        && isValidString(data.createdAt, 1, 40);
+    }
+
+    // Collection Rules
+    match /profiles/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidProfile(request.resource.data);
+      allow update: if isOwner(userId)
+        && resource != null
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidProfile(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /vehicles/{vehicleId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidVehicle(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidVehicle(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /drivers/{driverId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidDriver(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidDriver(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /daily_logbook_entries/{entryId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidLogbookEntry(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidLogbookEntry(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /service_records/{serviceId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidServiceRecord(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidServiceRecord(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /compliance_documents/{docId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidComplianceDocument(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidComplianceDocument(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /vehicle_media/{mediaId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidVehicleMedia(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidVehicleMedia(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /notification_logs/{notificationId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidNotificationLog(request.resource.data);
+      allow update: if isDocOwner()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidNotificationLog(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /audit_logs/{logId} {
+      allow get, list: if isDocOwner();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidAuditLog(request.resource.data);
+      allow update, delete: if false;
+    }
+  }
+}

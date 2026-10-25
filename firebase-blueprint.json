@@ -1,0 +1,1091 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "Fleet owner profile and default financial/operational configuration.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authenticated fleet owner.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the owner.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full name or business title of the fleet operator.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "businessName": {
+          "type": "string",
+          "description": "Registered fleet or transport business name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "defaultDriverSharePct": {
+          "type": "number",
+          "description": "Default percentage of eligible earnings allocated to driver share (0 to 100).",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["INR"],
+          "description": "Fixed reporting currency (INR)."
+        },
+        "distanceUnit": {
+          "type": "string",
+          "enum": ["km"],
+          "description": "Fixed distance unit (kilometres)."
+        },
+        "timezone": {
+          "type": "string",
+          "enum": ["Asia/Kolkata"],
+          "description": "Fixed operational timezone."
+        },
+        "intendedGoogleDriveEmail": {
+          "type": "string",
+          "description": "Target Google account email for Drive backups.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "expiryAlertDays": {
+          "type": "number",
+          "description": "Configurable warning window in days before statutory document expiry (1 to 180).",
+          "minimum": 1,
+          "maximum": 180
+        },
+        "serviceWarningKm": {
+          "type": "number",
+          "description": "Configurable odometer buffer in km before next preventive service due (100 to 10000).",
+          "minimum": 100,
+          "maximum": 10000
+        },
+        "accountMode": {
+          "type": "string",
+          "enum": ["Individual", "Organization"],
+          "description": "Whether the account is configured for Individual use or Multi-User Organization use."
+        },
+        "organizationName": {
+          "type": "string",
+          "description": "Name of the fleet organization when accountMode is Organization.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "alertEmail": {
+          "type": "string",
+          "description": "Target email address for 10d, 5d, and 1d compliance expiry alerts.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "Target WhatsApp phone number for 10d, 5d, and 1d compliance expiry alerts.",
+          "minLength": 5,
+          "maxLength": 25
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update.",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "email",
+        "displayName",
+        "businessName",
+        "defaultDriverSharePct",
+        "currency",
+        "distanceUnit",
+        "timezone",
+        "intendedGoogleDriveEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Personal or commercial fleet vehicle record with compliance and odometer tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "registrationNumber": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "make": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "variant": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "manufacturingYear": {
+          "type": "number",
+          "minimum": 1980,
+          "maximum": 2100
+        },
+        "colour": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "fuelType": {
+          "type": "string",
+          "enum": ["Petrol", "Diesel", "CNG", "LPG", "Petrol+CNG", "Electric", "Hybrid"]
+        },
+        "transmission": {
+          "type": "string",
+          "enum": ["Manual", "Automatic", "AMT", "CVT"]
+        },
+        "vehicleType": {
+          "type": "string",
+          "enum": ["Sedan", "SUV", "Hatchback", "MPV", "Commercial Van", "Truck"]
+        },
+        "ownershipType": {
+          "type": "string",
+          "enum": ["Personal", "Commercial", "Leased", "Attached"]
+        },
+        "purchaseDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "purchasePrice": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "currentOdometerKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "assignedDriverId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "assignedDriverName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "insuranceProvider": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "insuranceExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "fcNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "fcExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "permitType": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "permitNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "permitExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "pollutionExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "lastServiceDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "lastServiceOdometerKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "nextServiceDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "nextServiceOdometerKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "serviceIntervalKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 500000
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Maintenance", "Inactive", "Archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "registrationNumber",
+        "make",
+        "model",
+        "variant",
+        "manufacturingYear",
+        "colour",
+        "fuelType",
+        "transmission",
+        "vehicleType",
+        "ownershipType",
+        "purchaseDate",
+        "purchasePrice",
+        "currentOdometerKm",
+        "assignedDriverId",
+        "assignedDriverName",
+        "insuranceProvider",
+        "insuranceExpiry",
+        "fcNumber",
+        "fcExpiry",
+        "permitType",
+        "permitNumber",
+        "permitExpiry",
+        "pollutionExpiry",
+        "lastServiceDate",
+        "lastServiceOdometerKm",
+        "nextServiceDate",
+        "nextServiceOdometerKm",
+        "serviceIntervalKm",
+        "notes",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "Fleet driver profile with license compliance and share configuration.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 25
+        },
+        "licenseNumber": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 40
+        },
+        "licenseExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "defaultSharePct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "assignedVehicleId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "On Leave", "Inactive", "Archived"]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "fullName",
+        "phone",
+        "licenseNumber",
+        "licenseExpiry",
+        "defaultSharePct",
+        "assignedVehicleId",
+        "status",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DailyLogbookEntry": {
+      "title": "DailyLogbookEntry",
+      "description": "15-column daily vehicle logbook entry with validated odometer and decimal-safe financial metrics.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "vehicleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "vehicleRegistration": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "driverId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "driverName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "date": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "shiftNumber": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "startingKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "endingKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "kmDay": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "attendance": {
+          "type": "string",
+          "enum": ["Present", "Half Day", "Absent", "Leave"]
+        },
+        "earnings": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "unitPrice": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "driverSharePct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "driverShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "gasFuel": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "redTaxi": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "toll": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "maintenance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "otherExpenses": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "totalExpenses": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50000000
+        },
+        "netBusinessEarnings": {
+          "type": "number",
+          "minimum": -50000000,
+          "maximum": 50000000
+        },
+        "sourceRemarks": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "vehicleId",
+        "vehicleRegistration",
+        "driverId",
+        "driverName",
+        "date",
+        "shiftNumber",
+        "startingKm",
+        "endingKm",
+        "kmDay",
+        "attendance",
+        "earnings",
+        "unitPrice",
+        "driverSharePct",
+        "driverShare",
+        "gasFuel",
+        "redTaxi",
+        "toll",
+        "maintenance",
+        "otherExpenses",
+        "totalExpenses",
+        "netBusinessEarnings",
+        "sourceRemarks",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ServiceRecord": {
+      "title": "ServiceRecord",
+      "description": "Preventive and corrective workshop maintenance record with odometer and cost tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "vehicleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "vehicleRegistration": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "serviceDate": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "serviceType": {
+          "type": "string",
+          "enum": [
+            "Periodic Service",
+            "Oil & Filter Change",
+            "Brake & Suspension",
+            "CNG/LPG Kit Calibration",
+            "Tyre & Wheel Alignment",
+            "Electrical & Battery",
+            "Body & Accident Repair",
+            "General Inspection"
+          ]
+        },
+        "odometerKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "nextServiceDueKm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "nextServiceDueDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "workshopName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "partsCost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "laborCost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "totalCost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20000000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Completed", "Scheduled", "In Progress"]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "vehicleId",
+        "vehicleRegistration",
+        "serviceDate",
+        "serviceType",
+        "odometerKm",
+        "nextServiceDueKm",
+        "nextServiceDueDate",
+        "workshopName",
+        "invoiceNumber",
+        "partsCost",
+        "laborCost",
+        "totalCost",
+        "status",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ComplianceDocument": {
+      "title": "ComplianceDocument",
+      "description": "Uploaded statutory certificate and historical renewal record for vehicles and drivers.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "targetType": {
+          "type": "string",
+          "enum": ["Vehicle", "Driver"]
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "targetLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "documentType": {
+          "type": "string",
+          "enum": [
+            "Insurance Policy",
+            "Fitness Certificate (FC)",
+            "Permit Certificate",
+            "Pollution Certificate (PUCC)",
+            "Registration Certificate (RC)",
+            "Tax Receipt",
+            "Driver Licence"
+          ]
+        },
+        "documentNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "providerOrAuthority": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "issueDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "expiryDate": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "premiumOrFee": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160
+        },
+        "fileMimeType": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "fileSizeBytes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20000000
+        },
+        "fileDataUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 150000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Superseded", "Archived"]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "targetType",
+        "targetId",
+        "targetLabel",
+        "documentType",
+        "documentNumber",
+        "providerOrAuthority",
+        "issueDate",
+        "expiryDate",
+        "premiumOrFee",
+        "fileName",
+        "fileMimeType",
+        "fileSizeBytes",
+        "fileDataUrl",
+        "status",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VehicleMedia": {
+      "title": "VehicleMedia",
+      "description": "Multi-angle inspection photographs, 360-degree sequence frames, and GLB/glTF 3D model assets.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "vehicleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "registrationNumber": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "mediaCategory": {
+          "type": "string",
+          "enum": ["AnglePhoto", "Model3D", "AICalibration"]
+        },
+        "angleLabel": {
+          "type": "string",
+          "enum": [
+            "0_Front",
+            "45_FrontLeft",
+            "90_Left",
+            "135_RearLeft",
+            "180_Rear",
+            "225_RearRight",
+            "270_Right",
+            "315_FrontRight",
+            "Custom"
+          ]
+        },
+        "angleDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "model/gltf-binary",
+            "model/gltf+json",
+            "application/json"
+          ]
+        },
+        "fileSizeBytes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 52428800
+        },
+        "dataUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 250000
+        },
+        "storagePath": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "vehicleId",
+        "registrationNumber",
+        "mediaCategory",
+        "angleLabel",
+        "angleDegrees",
+        "fileName",
+        "mimeType",
+        "fileSizeBytes",
+        "dataUrl",
+        "storagePath",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "NotificationLog": {
+      "title": "NotificationLog",
+      "description": "Evaluated compliance alert, preventive maintenance reminder, or dispatched executive report record.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "alertType": {
+          "type": "string",
+          "enum": [
+            "StatutoryExpiry",
+            "ServiceOdometer",
+            "ServiceDate",
+            "DriverLicense",
+            "FinancialDigest",
+            "ReportExport"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["CRITICAL", "WARNING", "INFO"]
+        },
+        "targetLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 800
+        },
+        "recipientEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "channel": {
+          "type": "string",
+          "enum": ["InApp", "EmailDigest", "WhatsApp", "PDFReport"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Unread", "Acknowledged", "Dispatched", "Archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "alertType",
+        "severity",
+        "targetLabel",
+        "title",
+        "message",
+        "recipientEmail",
+        "channel",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable audit record of operational and financial mutations.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entityType": {
+          "type": "string",
+          "enum": [
+            "Profile",
+            "Vehicle",
+            "Driver",
+            "DailyLogbookEntry",
+            "ServiceRecord",
+            "ComplianceDocument",
+            "VehicleMedia",
+            "NotificationLog",
+            "Backup"
+          ]
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "ownerId",
+        "action",
+        "entityType",
+        "entityId",
+        "summary",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": {
+        "$ref": "#/entities/Profile"
+      },
+      "description": "Fleet owner configuration profile keyed by Firebase Auth UID."
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": {
+        "$ref": "#/entities/Vehicle"
+      },
+      "description": "Fleet vehicles owned by the authenticated user."
+    },
+    "/drivers/{driverId}": {
+      "schema": {
+        "$ref": "#/entities/Driver"
+      },
+      "description": "Drivers managed by the authenticated user."
+    },
+    "/daily_logbook_entries/{entryId}": {
+      "schema": {
+        "$ref": "#/entities/DailyLogbookEntry"
+      },
+      "description": "15-column daily logbook entries for fleet vehicles."
+    },
+    "/service_records/{serviceId}": {
+      "schema": {
+        "$ref": "#/entities/ServiceRecord"
+      },
+      "description": "Preventive and corrective workshop service records for fleet vehicles."
+    },
+    "/compliance_documents/{docId}": {
+      "schema": {
+        "$ref": "#/entities/ComplianceDocument"
+      },
+      "description": "Uploaded statutory compliance documents and historical renewal records."
+    },
+    "/vehicle_media/{mediaId}": {
+      "schema": {
+        "$ref": "#/entities/VehicleMedia"
+      },
+      "description": "Multi-angle vehicle photographs, 360-degree sequence frames, and GLB/glTF 3D model assets."
+    },
+    "/notification_logs/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/NotificationLog"
+      },
+      "description": "Compliance alerts, service reminders, email digest logs, and PDF report export records."
+    },
+    "/audit_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/AuditLog"
+      },
+      "description": "Immutable audit trail entries for fleet operations."
+    }
+  }
+}

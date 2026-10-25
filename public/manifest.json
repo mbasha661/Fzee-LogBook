@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "FzeeLog — Vehicle Logbook & Fleet Management",
+  "short_name": "FzeeLog",
+  "description": "Full-stack 15-column vehicle logbook, commercial fleet operations, driver settlement, compliance tracker, and Google Drive backup vault.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
