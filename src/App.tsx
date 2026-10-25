@@ -33,6 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { FleetProvider, useFleet } from './context/FleetContext';
+import { I18nProvider, LanguageSwitch } from './i18n';
 import { AccountMode, NavigationTab, OrgMemberRole } from './types/fleet';
 import { DashboardView } from './components/DashboardView';
 import { VehiclesView } from './components/VehiclesView';
@@ -675,6 +676,7 @@ const FzeeLogShell: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
+            <LanguageSwitch />
             <button
               type="button"
               onClick={() => setAuthPortalModalOpen(true)}
@@ -1198,8 +1200,10 @@ const FzeeLogShell: React.FC = () => {
 
 export default function App() {
   return (
-    <FleetProvider>
-      <FzeeLogShell />
-    </FleetProvider>
+    <I18nProvider>
+      <FleetProvider>
+        <FzeeLogShell />
+      </FleetProvider>
+    </I18nProvider>
   );
 }
