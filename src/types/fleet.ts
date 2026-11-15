@@ -62,12 +62,7 @@ export type ComplianceDocumentType =
   | 'Pollution Certificate (PUCC)'
   | 'Registration Certificate (RC)'
   | 'Tax Receipt'
-  | 'Driver Licence'
-  | 'Commercial Permit'
-  | 'Pollution Certificate (PUC)'
-  | 'Tax Token'
-  | 'Driver License (DL)'
-  | 'Service Invoice';
+  | 'Driver Licence';
 
 export type ComplianceDocumentCategory = ComplianceDocumentType;
 
@@ -131,6 +126,8 @@ export type OrgMemberRole =
 export interface OrganizationMember {
   id: string;
   ownerId: string;
+  /** Firebase Auth uid of the member's own login account (email + PIN). */
+  memberUid?: string;
   organizationName?: string;
   fullName: string;
   email: string;

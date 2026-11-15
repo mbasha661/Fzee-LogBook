@@ -32,6 +32,9 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import { Brand } from './components/Brand';
+import { ThemeProvider, ThemeSwitch } from './context/ThemeContext';
+import { AuthGate } from './components/AuthGate';
 import { FleetProvider, useFleet } from './context/FleetContext';
 import { I18nProvider, LanguageSwitch } from './i18n';
 import { AccountMode, NavigationTab, OrgMemberRole } from './types/fleet';
@@ -77,6 +80,7 @@ const FzeeLogShell: React.FC = () => {
   const {
     user,
     authReady,
+    accountCreating,
     dataLoading,
     isDemoMode,
     setIsDemoMode,
@@ -169,387 +173,10 @@ const FzeeLogShell: React.FC = () => {
     }
   };
 
-  // Protected Route Gate when neither signed in nor in explicit Demo Preview Mode
-  if (authReady && !user && !isDemoMode) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-between p-6 lg:p-10">
-        {/* Top Bar Contract */}
-        <header className="flex items-center justify-between gap-8 pb-5 border-b border-slate-800 max-w-6xl w-full mx-auto">
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-bold tracking-tight text-white whitespace-nowrap shrink-0">
-              FzeeLog
-            </span>
-            <span className="px-2.5 py-0.5 text-[11px] font-mono bg-teal-950 text-teal-300 border border-teal-700 rounded">
-              15-Column Default Ledger · 10d/5d/1d Expiry Alerts
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={signInWithGoogle}
-              className="px-4 py-2 text-xs font-semibold text-slate-900 bg-teal-400 rounded-lg hover:bg-teal-300 transition-colors whitespace-nowrap shrink-0"
-            >
-              Google OAuth Sign In
-            </button>
-          </div>
-        </header>
+  if (!authReady) return <div className="min-h-screen grid place-items-center bg-slate-950 text-white">Loading your account...</div>;
+  if (!user && !isDemoMode) return <AuthGate />;
 
-        <main className="max-w-6xl w-full mx-auto my-auto py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Value Proposition & Step 1 Usage Mode Question */}
-          <div className="lg:col-span-6 space-y-6">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-teal-400 tracking-wide uppercase">
-                Step 1 · Choose How You Use FzeeLog
-              </p>
-              <h1 className="text-2xl sm:text-4xl font-bold tracking-tight text-white leading-tight">
-                Are you setting up FzeeLog for an Organization or Individual Use?
-              </h1>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                Select <strong>Organization Use</strong> for multi-user role login (Admin, Fleet Manager, Accountant, Dispatcher, Driver) or <strong>Individual Use</strong> for a single owner-operator. The <strong>15-Column Logbook Ledger</strong> loads by default and is fully customizable.
-              </p>
-            </div>
-
-            {/* Initial Choice Cards: Organization vs Individual */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedAccountMode('Organization');
-                  setPortalAuthTab('signup');
-                }}
-                className={`p-4 rounded-xl border text-left transition-all space-y-2 ${
-                  selectedAccountMode === 'Organization'
-                    ? 'bg-teal-950/70 border-teal-400 ring-2 ring-teal-400/30'
-                    : 'bg-slate-800/80 border-slate-700 hover:border-slate-600'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <Building2 className="w-5 h-5 text-teal-400" />
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-teal-400/20 text-teal-300">
-                    Multi-User Login
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-white">
-                  Organization Use
-                </h3>
-                <p className="text-xs text-slate-300">
-                  Multiple user logins (Admin, Manager, Accountant, Dispatcher), shared 15-column fleet ledger, and team audit trail.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedAccountMode('Individual');
-                  if (portalAuthTab === 'org_member_login') {
-                    setPortalAuthTab('signup');
-                  }
-                }}
-                className={`p-4 rounded-xl border text-left transition-all space-y-2 ${
-                  selectedAccountMode === 'Individual'
-                    ? 'bg-teal-950/70 border-teal-400 ring-2 ring-teal-400/30'
-                    : 'bg-slate-800/80 border-slate-700 hover:border-slate-600'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <UserCheck className="w-5 h-5 text-teal-400" />
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-slate-700 text-slate-300">
-                    Single Owner
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-white">
-                  Individual Use
-                </h3>
-                <p className="text-xs text-slate-300">
-                  Streamlined personal or single-owner vehicle logbook, expense tracker, and statutory expiry alerts.
-                </p>
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-800/90 border border-slate-700 rounded-xl space-y-2 text-xs">
-              <div className="flex items-center gap-2 font-semibold text-teal-300">
-                <Bell className="w-4 h-4" />
-                <span>
-                  Automated 10-Day, 5-Day &amp; 1-Day Statutory Expiry Alerts
-                </span>
-              </div>
-              <p className="text-slate-300 leading-relaxed">
-                Monitors <strong>Insurance</strong>, <strong>Fitness Certificate (FC)</strong>, <strong>Permit</strong>, <strong>Driver Licence</strong>, and <strong>Pollution (PUC)</strong> expiries and dispatches alerts before <strong>10 days</strong>, <strong>5 days</strong>, and <strong>1 day</strong> to your Email (<span className="font-mono text-white">{portalEmail || 'you@example.com'}</span>) and WhatsApp (<span className="font-mono text-white">{portalWhatsapp || 'your number'}</span>).
-              </p>
-            </div>
-
-            {errorBanner && (
-              <div className="p-4 bg-red-950/80 border border-red-700 rounded-lg text-xs text-red-200">
-                {errorBanner}
-              </div>
-            )}
-          </div>
-
-          {/* Right Column: Organization & Individual Login / Sign-Up Form */}
-          <div className="lg:col-span-6 bg-slate-800/95 border border-slate-700 rounded-xl p-6 space-y-5 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 pb-3">
-              <div>
-                <span className="text-[11px] font-mono uppercase text-teal-400">
-                  {selectedAccountMode === 'Organization'
-                    ? 'Organization Multi-User Portal'
-                    : 'Individual Owner Portal'}
-                </span>
-                <h2 className="text-lg font-bold text-white">
-                  {portalAuthTab === 'signup'
-                    ? `Create ${selectedAccountMode} Account`
-                    : portalAuthTab === 'login'
-                    ? `${selectedAccountMode} Account Login`
-                    : 'Organization Team Member Login'}
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg text-xs">
-                <button
-                  type="button"
-                  onClick={() => setPortalAuthTab('signup')}
-                  className={`px-2.5 py-1 rounded font-semibold ${
-                    portalAuthTab === 'signup'
-                      ? 'bg-teal-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  Sign Up
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPortalAuthTab('login')}
-                  className={`px-2.5 py-1 rounded font-semibold ${
-                    portalAuthTab === 'login'
-                      ? 'bg-teal-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  Login
-                </button>
-                {selectedAccountMode === 'Organization' && (
-                  <button
-                    type="button"
-                    onClick={() => setPortalAuthTab('org_member_login')}
-                    className={`px-2.5 py-1 rounded font-semibold ${
-                      portalAuthTab === 'org_member_login'
-                        ? 'bg-teal-500 text-slate-950'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    Multi-User Login ({organizationMembers.length})
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <form onSubmit={handlePortalSubmit} className="space-y-3.5 text-xs">
-              {portalAuthTab === 'org_member_login' &&
-              selectedAccountMode === 'Organization' ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">
-                      Select Organization Team Member Login
-                    </label>
-                    <select
-                      value={selectedMemberId || organizationMembers[0]?.id || ''}
-                      onChange={(e) => {
-                        const m = organizationMembers.find(
-                          (item) => item.id === e.target.value
-                        );
-                        setSelectedMemberId(e.target.value);
-                        if (m) {
-                          setPortalFullName(m.fullName);
-                          setPortalEmail(m.email);
-                          setPortalWhatsapp(m.whatsappNumber);
-                          setPortalRole(m.role);
-                          setPortalPin('');
-                        }
-                      }}
-                      className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium"
-                    >
-                      {organizationMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.fullName} — {m.role} ({m.email})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">
-                      Operator Access PIN
-                    </label>
-                    <input
-                      type="password"
-                      required
-                      value={portalPin}
-                      onChange={(e) => setPortalPin(e.target.value)}
-                      placeholder="4-16 digit PIN"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Your Full Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={portalFullName}
-                        onChange={(e) => setPortalFullName(e.target.value)}
-                        placeholder="Full name"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white"
-                      />
-                    </div>
-
-                    {selectedAccountMode === 'Organization' ? (
-                      <div>
-                        <label className="block text-slate-300 font-medium mb-1">
-                          Organization / Company Name
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={portalOrgName}
-                          onChange={(e) => setPortalOrgName(e.target.value)}
-                          placeholder="FzeeLog Commercial Fleet Services"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white"
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-slate-300 font-medium mb-1">
-                          Personal Vehicle / Logbook Label
-                        </label>
-                        <input
-                          type="text"
-                          value={portalPersonalName}
-                          onChange={(e) => setPortalPersonalName(e.target.value)}
-                          placeholder="Personal Vehicle Logbook"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Alert E-Mail ID (Insurance/FC/Permit/DL/PUC)
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        value={portalEmail}
-                        onChange={(e) => setPortalEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        WhatsApp Number (10d, 5d, 1d Expiry Alerts)
-                      </label>
-                      <input
-                        type="tel"
-                        required
-                        value={portalWhatsapp}
-                        onChange={(e) => setPortalWhatsapp(e.target.value)}
-                        placeholder="9876543210"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {selectedAccountMode === 'Organization' && (
-                      <div>
-                        <label className="block text-slate-300 font-medium mb-1">
-                          Organization User Role
-                        </label>
-                        <select
-                          value={portalRole}
-                          onChange={(e) =>
-                            setPortalRole(e.target.value as OrgMemberRole)
-                          }
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white"
-                        >
-                          <option value="OrgAdmin">OrgAdmin (Full Access)</option>
-                          <option value="FleetManager">FleetManager</option>
-                          <option value="Accountant">Accountant</option>
-                          <option value="Dispatcher">Dispatcher</option>
-                          <option value="DriverViewer">DriverViewer</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Password / Access PIN
-                      </label>
-                      <input
-                        type="password"
-                        required
-                        value={portalPin}
-                        onChange={(e) => setPortalPin(e.target.value)}
-                        placeholder="4-16 digit PIN"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {portalError && (
-                <div
-                  role="alert"
-                  className="px-3 py-2 text-xs font-medium text-red-200 bg-red-950/70 border border-red-800 rounded-lg"
-                >
-                  {portalError}
-                </div>
-              )}
-              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={portalSubmitting}
-                  className="flex-1 px-5 py-3 text-xs font-bold text-slate-950 bg-teal-400 rounded-lg hover:bg-teal-300 transition-colors flex items-center justify-center gap-2"
-                >
-                  <LogIn className="w-4 h-4" />
-                  {portalSubmitting
-                    ? 'Launching 15-Column Ledger...'
-                    : portalAuthTab === 'signup'
-                    ? `Complete ${selectedAccountMode} Sign Up & Open 15-Column Logbook`
-                    : `Login (${selectedAccountMode}) & Open 15-Column Logbook`}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={signInWithGoogle}
-                  className="px-4 py-3 text-xs font-semibold text-white bg-slate-900 border border-slate-600 rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap"
-                >
-                  Google Cloud Sign-In
-                </button>
-              </div>
-            </form>
-          </div>
-        </main>
-
-        <footer className="max-w-6xl w-full mx-auto pt-5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
-          <span>
-            FzeeLog — Organization &amp; Individual 15-Column Vehicle Logbook
-          </span>
-          <span className="font-mono">
-            Email &amp; WhatsApp 10d/5d/1d Expiry Alerts
-          </span>
-        </footer>
-      </div>
-    );
-  }
+  if ((accountCreating || (user && !profile)) && !isDemoMode) return <main className="min-h-screen bg-slate-950 text-white grid place-items-center p-6"><section className="max-w-md text-center"><h1 className="text-xl font-semibold">Opening your workspace...</h1><p className="mt-3 text-slate-300">Your private account is being prepared. Please keep this page open.</p>{errorBanner && <p role="alert" className="mt-4 text-red-300">We could not load your account. Please sign out and try again.</p>}<button className="mt-6 text-teal-300" onClick={signOut}>Sign out</button></section></main>;
 
   const currentNavLabel =
     NAV_ITEMS.find((n) => n.id === activeTab)?.label || '15-Col Daily Logbook';
@@ -557,105 +184,19 @@ const FzeeLogShell: React.FC = () => {
     profile?.accountMode || 'Organization';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
-      {/* Desktop Sidebar ($260px) */}
-      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-slate-900 text-slate-200 border-r border-slate-800 z-30">
-        <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-          <div>
-            <span className="text-lg font-bold tracking-tight text-white whitespace-nowrap block">
-              FzeeLog
-            </span>
-            <span className="text-[10px] font-mono text-teal-400 uppercase">
-              {currentAccountMode} Mode
-            </span>
-          </div>
-          <span className="text-xs font-mono text-teal-400">INR · KM</span>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleNavigate(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-teal-600 text-white font-semibold'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <aside className="desktop-navigation hidden lg:flex">
+        <div className="desktop-brand"><Brand /></div>
+        <nav aria-label="Main navigation" className="desktop-nav-items">
+          {NAV_ITEMS.map(item => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => handleNavigate(item.id)} aria-current={activeTab === item.id ? 'page' : undefined} className={activeTab === item.id ? 'nav-active' : ''}><Icon className="w-4 h-4"/><span>{item.label}</span></button>; })}
         </nav>
-
-        <div className="p-4 border-t border-slate-800 space-y-2.5 text-xs">
-          <div className="text-slate-400 truncate space-y-0.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase text-teal-400">
-                {currentAccountMode}
-              </span>
-              {currentAccountMode === 'Organization' && activeOrgMember && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 bg-slate-800 text-teal-300 rounded">
-                  {activeOrgMember.role}
-                </span>
-              )}
-            </div>
-            <p className="font-semibold text-white truncate">
-              {currentAccountMode === 'Organization' && activeOrgMember
-                ? activeOrgMember.fullName
-                : profile?.fullName || profile?.businessName || 'FzeeLog Fleet'}
-            </p>
-            <p className="font-mono text-[11px] text-slate-400 truncate">
-              {profile?.alertEmail || user?.email || 'not configured'}
-            </p>
-            <p className="font-mono text-[11px] text-emerald-400 truncate">
-              WA: {profile?.whatsappNumber || 'not set'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setAuthPortalModalOpen(true)}
-            className="w-full px-3 py-2 text-xs font-semibold text-teal-300 bg-slate-800 border border-slate-700 hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Users className="w-3.5 h-3.5" />
-            {currentAccountMode === 'Organization'
-              ? `Switch User (${organizationMembers.length})`
-              : 'Org / Individual Login'}
-          </button>
-
-          {user ? (
-            <button
-              type="button"
-              onClick={signOut}
-              className="w-full px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg flex items-center justify-center gap-2 transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={signInWithGoogle}
-              className="w-full px-3 py-2 text-xs font-semibold text-slate-950 bg-teal-400 hover:bg-teal-300 rounded-lg flex items-center justify-center gap-2 transition-colors"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Sign In with Google
-            </button>
-          )}
-        </div>
+        <button type="button" className="nav-account" onClick={signOut}>Sign out</button>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:pl-64 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar Contract: Zone 1 Breadcrumb — Zone 2 Quick Links — Zone 3 Primary Action */}
-        <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+        <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -670,16 +211,17 @@ const FzeeLogShell: React.FC = () => {
               )}
             </button>
             <div className="text-sm font-semibold text-slate-900 whitespace-nowrap truncate">
-              FzeeLog <span className="text-slate-400 font-normal">/</span>{' '}
+              <span className="lg:hidden inline-flex align-middle mr-2"><Brand compact /></span><span className="hidden lg:inline">FzeeLogBook</span> <span className="text-slate-400 font-normal hidden sm:inline">/</span>{' '}
               <span>{currentNavLabel}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 max-w-full">
+            <ThemeSwitch />
             <LanguageSwitch />
             <button
               type="button"
-              onClick={() => setAuthPortalModalOpen(true)}
+              onClick={() => { if (isDemoMode) setAuthPortalModalOpen(true); else handleNavigate('settings'); }}
               className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
             >
               {currentAccountMode === 'Organization' ? (
@@ -1072,7 +614,7 @@ const FzeeLogShell: React.FC = () => {
 
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-slate-900 text-white px-4 py-3 border-b border-slate-800 space-y-1">
+          <div className="lg:hidden bg-white text-slate-900 px-4 py-3 border-b border-slate-200 space-y-1">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
@@ -1083,7 +625,7 @@ const FzeeLogShell: React.FC = () => {
                   className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-medium rounded-lg ${
                     activeTab === item.id
                       ? 'bg-teal-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-800'
+                      : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -1091,6 +633,7 @@ const FzeeLogShell: React.FC = () => {
                 </button>
               );
             })}
+            <button type="button" onClick={signOut} className="w-full px-3 py-3 text-left text-sm text-slate-600">Sign out</button>
           </div>
         )}
 
@@ -1098,7 +641,7 @@ const FzeeLogShell: React.FC = () => {
         {isDemoMode && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
             <div>
-              <strong>{currentAccountMode.toUpperCase()} MODE ACTIVE:</strong>{' '}
+              <strong>DEMO - IN-MEMORY ONLY:</strong>{' '}
               {currentAccountMode === 'Organization' && activeOrgMember
                 ? `Logged in as ${activeOrgMember.fullName} (${activeOrgMember.role}) · `
                 : ''}
@@ -1200,10 +743,10 @@ const FzeeLogShell: React.FC = () => {
 
 export default function App() {
   return (
-    <I18nProvider>
+    <ThemeProvider><I18nProvider>
       <FleetProvider>
         <FzeeLogShell />
       </FleetProvider>
-    </I18nProvider>
+    </I18nProvider></ThemeProvider>
   );
 }

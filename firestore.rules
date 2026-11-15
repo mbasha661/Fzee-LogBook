@@ -28,6 +28,14 @@ service cloud.firestore {
       return val is number && val >= minVal && val <= maxVal;
     }
 
+    // Organization members: a signed-in member is active on an owner's
+    // workspace when the deterministic record ownerUid__memberUid exists.
+    function isActiveOrgMember(ownerUid) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/organization_members/$(ownerUid + '__' + request.auth.uid))
+        && get(/databases/$(database)/documents/organization_members/$(ownerUid + '__' + request.auth.uid)).data.status == 'Active';
+    }
+
     // Profile Validation
     function hasRequiredProfileFields(data) {
       return data.keys().hasAll([
@@ -79,7 +87,7 @@ service cloud.firestore {
         && (!('accountMode' in data) || data.accountMode in ['Individual', 'Organization'])
         && (!('organizationName' in data) || isValidString(data.organizationName, 0, 120))
         && (!('alertEmail' in data) || isValidString(data.alertEmail, 3, 160))
-        && (!('whatsappNumber' in data) || isValidString(data.whatsappNumber, 5, 25))
+        && (!('whatsappNumber' in data) || isValidString(data.whatsappNumber, 0, 25))
         && isValidNumber(data.defaultDriverSharePct, 0, 100)
         && data.currency == 'INR'
         && data.distanceUnit == 'km'
@@ -242,7 +250,7 @@ service cloud.firestore {
         ])
         && isValidString(data.ownerId, 1, 128)
         && isValidString(data.fullName, 1, 100)
-        && isValidString(data.phone, 5, 25)
+        && isValidString(data.phone, 0, 25)
         && isValidString(data.licenseNumber, 3, 40)
         && isValidString(data.licenseExpiry, 0, 20)
         && isValidNumber(data.defaultSharePct, 0, 100)
@@ -345,7 +353,7 @@ service cloud.firestore {
         && (!('driverShareMode' in data) || data.driverShareMode in ['PERCENTAGE', 'FIXED_DAILY', 'MANUAL'])
         && (!('platformEarningsBasis' in data) || data.platformEarningsBasis in ['GROSS', 'NET_OF_COMMISSION'])
         && (!('driverShareIncludedInExpenses' in data) || data.driverShareIncludedInExpenses is bool)
-        && (!('odometerCorrectionReason' in data) || isValidString(data.odometerCorrectionReason, 3, 300))
+        && (!('odometerCorrectionReason' in data) || (data.odometerCorrectionReason.size() == 0 || isValidString(data.odometerCorrectionReason, 3, 300)))
         && isValidString(data.sourceRemarks, 0, 500)
         && isValidString(data.createdAt, 1, 40)
         && isValidString(data.updatedAt, 1, 40);
@@ -663,7 +671,7 @@ service cloud.firestore {
 
     // Collection Rules
     match /profiles/{userId} {
-      allow get, list: if isOwner(userId);
+      allow get, list: if isOwner(userId) || isActiveOrgMember(userId);
       allow create: if isOwner(userId)
         && request.resource.data.ownerId == request.auth.uid
         && isValidProfile(request.resource.data);
@@ -676,101 +684,113 @@ service cloud.firestore {
     }
 
     match /vehicles/{vehicleId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidVehicle(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidVehicle(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /drivers/{driverId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidDriver(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidDriver(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /daily_logbook_entries/{entryId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidLogbookEntry(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidLogbookEntry(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /service_records/{serviceId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidServiceRecord(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidServiceRecord(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /compliance_documents/{docId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidComplianceDocument(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidComplianceDocument(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /vehicle_media/{mediaId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidVehicleMedia(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidVehicleMedia(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /notification_logs/{notificationId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidNotificationLog(request.resource.data);
-      allow update: if isDocOwner()
+      allow update: if (isDocOwner() || isActiveOrgMember(resource.data.ownerId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidNotificationLog(request.resource.data);
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
     }
 
     match /audit_logs/{logId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner() || isActiveOrgMember(resource.data.ownerId);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid
+            || isActiveOrgMember(request.resource.data.ownerId))
         && isValidAuditLog(request.resource.data);
       allow update, delete: if false;
     }
 
     match /organization_members/{memberId} {
-      allow get, list: if isDocOwner();
+      allow get, list: if isDocOwner()
+        || (isSignedIn() && resource.data.memberUid == request.auth.uid);
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid;
+        && request.resource.data.ownerId == request.auth.uid
+        && (!('memberUid' in request.resource.data)
+            || request.resource.data.memberUid == ''
+            || memberId == request.auth.uid + '__' + request.resource.data.memberUid);
       allow update: if isDocOwner()
         && request.resource.data.ownerId == resource.data.ownerId;
       allow delete: if isDocOwner();

@@ -1608,7 +1608,8 @@ export function parseLogbookCsvImport(
   vehicles: Vehicle[],
   drivers: Driver[],
   fourthArg: DailyLogbookEntry[] | number = 30,
-  fifthArg?: number
+  fifthArg?: number,
+  calcOptions?: LogbookCalculationOptions
 ): ParsedCsvLogbookRow[] {
   const defaultDriverSharePct =
     typeof fourthArg === 'number' ? fourthArg : fifthArg ?? 30;
@@ -1633,7 +1634,23 @@ export function parseLogbookCsvImport(
   };
 
   const idxDate = findIdx(['date'], 1);
-  const idxVeh = findIdx(['vehicle', 'registration', 'vehicleregistration'], 2);
+  const idxVeh = findIdx(
+    [
+      'vehicle',
+      'vehiclereg',
+      'vehicleregno',
+      'vehicleregistration',
+      'vehicleregistrationnumber',
+      'registration',
+      'registrationnumber',
+      'vehicleregistrationno',
+      'regno',
+      'reg',
+      'vehiclenumber',
+      'vehno',
+    ],
+    2
+  );
   const idxShift = findIdx(['shift', 'shiftnumber'], 3);
   const idxStartKm = findIdx(['startingkm', 'startkm'], 4);
   const idxEndKm = findIdx(['endingkm', 'endkm'], 5);
@@ -1654,16 +1671,30 @@ export function parseLogbookCsvImport(
 
     const dateVal = cols[idxDate] || getTodayKolkataDate();
     const vehRegRaw = (cols[idxVeh] || '').toUpperCase().trim();
+    const normalizeReg = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const vehRegNorm = normalizeReg(vehRegRaw);
 
-    const matchedVehicle =
-      vehicles.find(
-        (v) => v.registrationNumber.toUpperCase() === vehRegRaw
-      ) ||
-      vehicles.find((v) => v.status !== 'Archived') ||
-      vehicles[0];
+    let matchedVehicle = vehRegNorm
+      ? vehicles.find(
+          (v) => normalizeReg(v.registrationNumber) === vehRegNorm
+        )
+      : undefined;
 
     if (!matchedVehicle) {
-      rowErrors.push('No matching vehicle found in fleet.');
+      if (vehRegNorm) {
+        // A registration was supplied but no fleet vehicle matches it.
+        // Never silently fall back to another vehicle: that would file
+        // the row under the wrong vehicle.
+        rowErrors.push(
+          `No fleet vehicle matches registration "${vehRegRaw}".`
+        );
+      } else {
+        matchedVehicle =
+          vehicles.find((v) => v.status !== 'Archived') || vehicles[0];
+        if (!matchedVehicle) {
+          rowErrors.push('No matching vehicle found in fleet.');
+        }
+      }
     }
 
     const matchedDriver = matchedVehicle?.assignedDriverId
@@ -1705,17 +1736,20 @@ export function parseLogbookCsvImport(
       );
     }
 
-    const calc = calculateLogbookFinancials({
-      startingKm,
-      endingKm,
-      earnings,
-      driverSharePct,
-      gasFuel,
-      redTaxi,
-      toll,
-      maintenance,
-      otherExpenses: 0,
-    });
+    const calc = calculateLogbookFinancials(
+      {
+        startingKm,
+        endingKm,
+        earnings,
+        driverSharePct,
+        gasFuel,
+        redTaxi,
+        toll,
+        maintenance,
+        otherExpenses: 0,
+      },
+      calcOptions
+    );
 
     const entryPayload = {
       vehicleId: matchedVehicle?.id || '',

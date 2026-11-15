@@ -1,0 +1,1 @@
+{"framework": "vite", "buildCommand": "npm run build", "outputDirectory": "dist", "rewrites": [{"source": "/api/notifications/:route*", "destination": "/api/notifications?route=:route*"}, {"source": "/((?!api/).*)", "destination": "/index.html"}]}

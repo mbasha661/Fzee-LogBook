@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as updateAuthProfile,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
@@ -19,13 +23,17 @@ import {
 } from 'firebase/firestore';
 import {
   auth,
+  firebaseConfigured,
+  authPersistenceReady,
   db,
   googleProvider,
   handleFirestoreError,
   OperationType,
+  provisionMemberAuthAccount,
   setDriveAccessToken,
 } from '../lib/firebase';
 import {
+  deriveMemberPassword,
   findMemberForLogin,
   hashPin,
   resolveMemberPinHash,
@@ -59,11 +67,13 @@ import {
   DEMO_VEHICLES,
   DEMO_VEHICLE_MEDIA,
 } from '../lib/demoData';
+import { buildAccountProfile, validateAccountInput } from '../lib/accountAuth';
 import { calculateLogbookFinancials, resolveCalculationOptions, roundCurrency, roundKm } from '../lib/calculations';
 
 interface FleetContextValue {
   user: User | null;
   authReady: boolean;
+  accountCreating: boolean;
   isDemoMode: boolean;
   setDemoMode: (enabled: boolean) => void;
   setIsDemoMode: (enabled: boolean) => void;
@@ -84,6 +94,7 @@ interface FleetContextValue {
   clearErrorBanner: () => void;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   organizationMembers: OrganizationMember[];
   activeOrgMember: OrganizationMember | null;
   setActiveOrgMember: (member: OrganizationMember | null) => void;
@@ -241,8 +252,9 @@ const FleetContext = createContext<FleetContextValue | undefined>(undefined);
 export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [accountCreating, setAccountCreating] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [authReady, setAuthReady] = useState<boolean>(!firebaseConfigured);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
   // Live Firestore states
@@ -278,7 +290,14 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     DEMO_ORGANIZATION_MEMBERS
   );
   const [activeOrgMember, setActiveOrgMember] =
-    useState<OrganizationMember | null>(DEMO_ORGANIZATION_MEMBERS[0]);
+    useState<OrganizationMember | null>(null);
+  // When a team member signs in with their own Firebase account, this holds the
+  // owning organization account they belong to. All live data is then scoped to
+  // the owner's workspace (Firestore rules grant members access to it).
+  const [memberSession, setMemberSession] = useState<{
+    ownerId: string;
+    member: OrganizationMember;
+  } | null>(null);
   const [demoVehicles, setDemoVehicles] = useState<Vehicle[]>(DEMO_VEHICLES);
   const [demoDrivers, setDemoDrivers] = useState<Driver[]>(DEMO_DRIVERS);
   const [demoLogbookEntries, setDemoLogbookEntries] = useState<
@@ -352,59 +371,62 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!firebaseConfigured) return;
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      // Clear account state before switching identities. Never carry another UID's data.
+      setLiveProfile(null);
+      setLiveVehicles([]); setLiveDrivers([]); setLiveLogbookEntries([]);
+      setLiveServiceRecords([]); setLiveComplianceDocuments([]); setLiveVehicleMedia([]);
+      setLiveNotificationLogs([]); setLiveAuditLogs([]); setLiveOrgMembers([]);
+      setActiveOrgMember(null); setErrorMessage(null);
+      setIsDemoMode(false);
       setUser(currentUser);
       setAuthReady(true);
-
-      if (currentUser) {
-        setIsDemoMode(false);
-        try {
-          const profileRef = doc(db, 'profiles', currentUser.uid);
-          const snap = await getDoc(profileRef);
-          if (!snap.exists()) {
-            const now = new Date().toISOString();
-            const newProfile = {
-              ownerId: currentUser.uid,
-              email: currentUser.email || '',
-              displayName: currentUser.displayName || 'Fleet Operator',
-              businessName: 'FzeeLog Fleet Operations',
-              defaultDriverSharePct: 30,
-              currency: 'INR' as const,
-              distanceUnit: 'km' as const,
-              timezone: 'Asia/Kolkata' as const,
-              intendedGoogleDriveEmail: currentUser.email || '',
-              expiryAlertDays: 30,
-              serviceWarningKm: 1000,
-              createdAt: now,
-              updatedAt: now,
-            };
-            await setDoc(profileRef, newProfile);
-          }
-        } catch (err) {
-          try {
-            handleFirestoreError(
-              err,
-              OperationType.GET,
-              `profiles/${currentUser.uid}`
-            );
-          } catch (formatted: any) {
-            setErrorMessage(formatted.message);
-          }
-        }
-      } else {
-        setLiveProfile(null);
-        setLiveVehicles([]);
-        setLiveDrivers([]);
-        setLiveLogbookEntries([]);
-        setLiveServiceRecords([]);
-        setLiveComplianceDocuments([]);
-        setLiveVehicleMedia([]);
-        setLiveNotificationLogs([]);
-        setLiveAuditLogs([]);
-      }
     });
     return () => unsub();
   }, []);
+
+  // Resolve team-member sessions: a signed-in user without their own profile
+  // may be an organization member. Their member record points at the owner's
+  // workspace that this session is allowed to load.
+  useEffect(() => {
+    if (!firebaseConfigured || !authReady || !user || isDemoMode) {
+      if (!user) setMemberSession(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
+        if (cancelled) return;
+        if (profileSnap.exists()) {
+          setMemberSession(null);
+          return;
+        }
+        const memberQuery = query(
+          collection(db, 'organization_members'),
+          where('memberUid', '==', user.uid)
+        );
+        const { getDocs } = await import('firebase/firestore');
+        const snap = await getDocs(memberQuery);
+        if (cancelled) return;
+        const active = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<OrganizationMember, 'id'>) }))
+          .find((m) => m.status === 'Active');
+        if (active) {
+          setMemberSession({ ownerId: active.ownerId, member: active });
+          setActiveOrgMember(active);
+        } else {
+          setMemberSession(null);
+        }
+      } catch {
+        if (!cancelled) setMemberSession(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user, isDemoMode]);
 
   const toIsoStringSafe = (val: any, fallback = ''): string => {
     if (!val) return fallback;
@@ -434,7 +456,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoadingData(true);
-    const uid = user.uid;
+    const uid = memberSession?.ownerId || user.uid;
 
     const unsubProfile = onSnapshot(
       doc(db, 'profiles', uid),
@@ -718,10 +740,15 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     );
 
-    const orgMemQuery = query(
-      collection(db, 'organization_members'),
-      where('ownerId', '==', uid)
-    );
+    const orgMemQuery = memberSession
+      ? query(
+          collection(db, 'organization_members'),
+          where('memberUid', '==', user.uid)
+        )
+      : query(
+          collection(db, 'organization_members'),
+          where('ownerId', '==', uid)
+        );
     const unsubOrgMem = onSnapshot(
       orgMemQuery,
       (snap) => {
@@ -754,7 +781,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       unsubAudit();
       unsubOrgMem();
     };
-  }, [authReady, user, isDemoMode]);
+  }, [authReady, user, isDemoMode, memberSession]);
 
   const recordAudit = async (
     action: string,
@@ -781,7 +808,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!user) return;
     const logRef = doc(collection(db, 'audit_logs'));
     await setDoc(logRef, {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       action: action.slice(0, 80),
       entityType,
       entityId: entityId.slice(0, 128),
@@ -791,6 +818,10 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const signInWithGoogle = async () => {
+    if (!firebaseConfigured) {
+      setErrorMessage('Add your Firebase web configuration to .env and restart the app to enable Google sign-in. Demo mode remains available.');
+      return;
+    }
     setErrorMessage(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -807,7 +838,10 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     setErrorMessage(null);
     setIsDemoMode(false);
     setDriveAccessToken(null);
-    await firebaseSignOut(auth);
+    setLiveProfile(null); setLiveVehicles([]); setLiveDrivers([]); setLiveLogbookEntries([]);
+    setLiveServiceRecords([]); setLiveComplianceDocuments([]); setLiveVehicleMedia([]);
+    setLiveNotificationLogs([]); setLiveAuditLogs([]); setLiveOrgMembers([]); setActiveOrgMember(null);
+    if (firebaseConfigured) await firebaseSignOut(auth);
   };
 
   const updateOwnerProfile = async (
@@ -880,7 +914,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!liveProfile) return;
     const profileRef = doc(db, 'profiles', user.uid);
     const payload: Record<string, any> = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       email: liveProfile.email,
       displayName: (resolvedDisplayName ?? liveProfile.displayName)
         .trim()
@@ -1005,6 +1039,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     existingId?: string
   ) => {
     const now = new Date().toISOString();
+    const rawPinForProvision = (memberData.accessPin || '').trim();
     const pinHash = await resolveMemberPinHash(
       memberData.accessPin || '',
       memberData.accessPinHash
@@ -1036,12 +1071,34 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
+    const existing = liveOrgMembers.find((m) => m.id === existingId);
+    // Members get a real Firebase login derived from their access PIN, so they
+    // can sign in to the organization workspace with email + PIN.
+    const rawPin = rawPinForProvision;
+    let memberUid = existing?.memberUid || '';
+    if (rawPin) {
+      memberUid = await provisionMemberAuthAccount(
+        memberData.email.trim().toLowerCase(),
+        rawPin
+      );
+    }
+    const deterministicId = memberUid
+      ? (memberSession?.ownerId || user.uid) + '__' + memberUid
+      : '';
     const memRef = existingId
       ? doc(db, 'organization_members', existingId)
+      : deterministicId
+      ? doc(db, 'organization_members', deterministicId)
       : doc(collection(db, 'organization_members'));
-    const existing = liveOrgMembers.find((m) => m.id === existingId);
+    // A legacy record (random id, no login) being upgraded gets replaced by the
+    // deterministic record keyed ownerId__memberUid that the security rules use.
+    const replacingLegacy =
+      existingId && deterministicId && existingId !== deterministicId
+        ? existingId
+        : '';
     await setDoc(memRef, {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
+      memberUid,
       fullName: memberData.fullName.trim().slice(0, 100),
       email: memberData.email.trim().slice(0, 160),
       whatsappNumber: memberData.whatsappNumber.trim().slice(0, 25),
@@ -1052,6 +1109,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     });
+    if (replacingLegacy) {
+      await deleteDoc(doc(db, 'organization_members', replacingLegacy)).catch(
+        () => undefined
+      );
+    }
     await recordAudit(
       existingId ? 'ORG_MEMBER_UPDATED' : 'ORG_MEMBER_CREATED',
       'Profile',
@@ -1083,110 +1145,54 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     memberId?: string;
   }) => {
     setErrorMessage(null);
-    const now = new Date().toISOString();
-    const cleanEmail = (params.email || '').trim();
-    const cleanWa = (params.whatsappNumber || '').trim();
-    const cleanName = (params.fullName || '').trim();
-    const cleanOrg =
-      params.accountMode === 'Organization'
-        ? (params.organizationName || '').trim()
-        : `${cleanName || 'My'} Personal Fleet`;
-
-    const allMembers =
-      liveOrgMembers.length > 0 ? liveOrgMembers : demoOrgMembers;
-
+    if (!firebaseConfigured) throw new Error('Account service is not configured. Please contact the app owner.');
+    await authPersistenceReady;
+    validateAccountInput(params);
+    const email = params.email.trim().toLowerCase();
     if (params.authAction === 'org_member_login') {
-      const targetMember = findMemberForLogin(allMembers, {
-        memberId: params.memberId,
-        email: cleanEmail,
-        fullName: cleanName,
-      });
-
-      if (targetMember) {
+      const pin = params.passwordOrPin.trim();
+      if (pin.length < 4) throw new Error('Enter your access PIN (4-16 characters).');
+      try {
+        await signInWithEmailAndPassword(auth, email, deriveMemberPassword(pin));
+      } catch (err) {
+        const code =
+          err && typeof err === 'object' && 'code' in err
+            ? String((err as { code?: string }).code || '')
+            : '';
         if (
-          !(await verifyMemberPin(
-            targetMember,
-            (params.passwordOrPin || '').trim()
-          ))
+          code === 'auth/invalid-credential' ||
+          code === 'auth/user-not-found' ||
+          code === 'auth/wrong-password'
         ) {
-          throw new Error(
-            `Invalid Operator Access PIN for ${targetMember.fullName}.`
-          );
+          throw new Error('Wrong email or PIN. Ask your organization owner to confirm them.');
         }
-        setActiveOrgMember(targetMember);
+        throw err;
       }
-    } else if (params.accountMode === 'Organization') {
-      const matched = allMembers.find(
-        (m) => m.email.toLowerCase() === cleanEmail.toLowerCase()
-      );
-      if (matched) {
-        setActiveOrgMember(matched);
-      } else {
-        const requestedPin = (params.passwordOrPin || '').trim();
-        if (!requestedPin) {
-          throw new Error(
-            'A Password / Access PIN is required to create an organization account.'
-          );
-        }
-        const createdMem: OrganizationMember = {
-          id: `org-mem-${Date.now()}`,
-          ownerId: user?.uid || 'demo-owner',
-          fullName: cleanName,
-          email: cleanEmail,
-          whatsappNumber: cleanWa,
-          role: params.role || 'Owner / Admin',
-          accessPin: '',
-          accessPinHash: await hashPin(requestedPin),
-          status: 'Active',
-          createdAt: now,
-          updatedAt: now,
-        };
-        setDemoOrgMembers((prev) => [createdMem, ...prev]);
-        setActiveOrgMember(createdMem);
-      }
-    } else {
-      setActiveOrgMember(null);
+      return;
     }
-
-    setDemoProfile((prev) => ({
-      ...prev,
-      email: cleanEmail,
-      displayName: cleanName,
-      fullName: cleanName,
-      businessName: cleanOrg,
-      accountMode: params.accountMode,
-      organizationName: cleanOrg,
-      alertEmail: cleanEmail,
-      whatsappNumber: cleanWa,
-      intendedGoogleDriveEmail: cleanEmail,
-      intendedDriveEmail: cleanEmail,
-      alertMilestonesDays: [10, 5, 1],
-      updatedAt: now,
-    }));
-
-    if (!user) {
-      setIsDemoMode(true);
-    } else {
-      await updateOwnerProfile({
-        displayName: cleanName,
-        fullName: cleanName,
-        businessName: cleanOrg,
-        accountMode: params.accountMode,
-        organizationName: cleanOrg,
-        alertEmail: cleanEmail,
-        whatsappNumber: cleanWa,
-        intendedGoogleDriveEmail: cleanEmail,
-      });
+    if (params.authAction === 'login') {
+      await signInWithEmailAndPassword(auth, email, params.passwordOrPin);
+      return;
     }
+    setAccountCreating(true);
+    let createdUser: User | null = null;
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, params.passwordOrPin);
+      createdUser = result.user;
+      await updateAuthProfile(result.user, { displayName: params.fullName.trim() });
+      await setDoc(doc(db, 'profiles', result.user.uid), buildAccountProfile(result.user.uid, params));
+    } catch (error) {
+      // Do not claim a usable workspace exists when profile creation failed.
+      await createdUser?.delete().catch(() => undefined);
+      await firebaseSignOut(auth);
+      throw error;
+    } finally { setAccountCreating(false); }
+  };
 
-    await recordAudit(
-      params.authAction === 'signup'
-        ? 'ACCOUNT_SIGNUP_COMPLETED'
-        : 'OPERATOR_LOGIN_COMPLETED',
-      'Profile',
-      user?.uid || 'demo-owner',
-      `${params.accountMode} session started for ${cleanName} (${cleanOrg}) · Alert Email: ${cleanEmail} · WhatsApp: ${cleanWa}.`
-    );
+  const resetPassword = async (email: string) => {
+    if (!firebaseConfigured) throw new Error('Account service is not configured.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new Error('Enter your account email address.');
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   };
 
   const saveVehicle = async (
@@ -1286,7 +1292,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingVehicle ? existingVehicle.createdAt : now,
       updatedAt: now,
@@ -1399,7 +1405,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingDriver ? existingDriver.createdAt : now,
       updatedAt: now,
@@ -1591,7 +1597,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingEntry ? existingEntry.createdAt : now,
       updatedAt: now,
@@ -1836,7 +1842,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingRec ? existingRec.createdAt : now,
       updatedAt: now,
@@ -2082,7 +2088,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingDoc ? existingDoc.createdAt : now,
       updatedAt: now,
@@ -2304,7 +2310,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingDoc ? existingDoc.createdAt : now,
       updatedAt: now,
@@ -2419,7 +2425,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
       : undefined;
 
     const payload = {
-      ownerId: user.uid,
+      ownerId: (memberSession?.ownerId || user.uid),
       ...sanitized,
       createdAt: existingDoc ? existingDoc.createdAt : now,
       updatedAt: now,
@@ -2539,6 +2545,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
   const value: FleetContextValue = {
     user,
     authReady,
+    accountCreating,
     isDemoMode,
     setDemoMode: setIsDemoMode,
     setIsDemoMode,
@@ -2561,10 +2568,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({
     clearErrorBanner: () => setErrorMessage(null),
     signInWithGoogle,
     signOut,
+    resetPassword,
     organizationMembers:
-      isDemoMode || liveOrgMembers.length === 0
-        ? demoOrgMembers
-        : liveOrgMembers,
+      isDemoMode ? demoOrgMembers : liveOrgMembers,
     activeOrgMember,
     setActiveOrgMember,
     saveOrganizationMember,

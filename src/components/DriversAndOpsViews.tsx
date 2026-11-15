@@ -38,6 +38,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFleet } from '../context/FleetContext';
+import { notificationRequest } from '../lib/notificationClient';
 import { NotificationSchedulerPanel } from './NotificationSchedulerPanel';
 import {
   AccountMode,
@@ -130,15 +131,16 @@ const SERVICE_TYPES: ServiceRecordType[] = [
   'Other',
 ];
 
+// Must stay within the documentType allowlist enforced by firestore.rules;
+// tests/complianceCategories.test.ts fails if a category is not deployable.
 const DOCUMENT_CATEGORIES: ComplianceDocumentCategory[] = [
   'Insurance Policy',
   'Fitness Certificate (FC)',
-  'Commercial Permit',
-  'Pollution Certificate (PUC)',
+  'Permit Certificate',
+  'Pollution Certificate (PUCC)',
   'Registration Certificate (RC)',
-  'Tax Token',
-  'Driver License (DL)',
-  'Service Invoice',
+  'Tax Receipt',
+  'Driver Licence',
 ];
 
 async function computeFileDigest(file: File): Promise<string> {
@@ -2205,50 +2207,12 @@ export const DocumentsExpiryView: React.FC = () => {
         milestoneWindow: m.milestoneBucket,
       }));
 
-      const res = await fetch('/api/notifications/test-dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel,
-          recipientEmail: alertEmail,
-          whatsappNumber: alertWhatsapp,
-          businessName: profile?.businessName || 'FzeeLog Fleet Operations',
-          accountMode: profile?.accountMode || 'Organization',
-          milestoneDays: profile?.alertMilestonesDays || [10, 5, 1],
-          expiringItems: itemsPayload,
-        }),
+      const receipt = await notificationRequest('/test-dispatch', {
+        method: 'POST', body: JSON.stringify({ channel, recipientEmail: alertEmail, testOnly: false }),
       });
-      const data = await res.json();
-      const preview =
-        data?.dispatchReceipt?.messagePreview ||
-        `Statutory 10d/5d/1d Expiry Alert (${itemsPayload.length} item(s)) dispatched to ${alertEmail} / +91 ${alertWhatsapp}.`;
-
-      await saveNotificationLog({
-        alertType: 'StatutoryExpiry',
-        severity: 'WARNING',
-        targetLabel:
-          channel === 'Email'
-            ? `Email Alert -> ${alertEmail}`
-            : `WhatsApp Alert -> +91 ${alertWhatsapp}`,
-        title: `Statutory Expiry ${channel} Alert Dispatched (${
-          channel === 'Email' ? alertEmail : alertWhatsapp
-        })`,
-        message: preview.slice(0, 900),
-        channel: channel === 'Email' ? 'EmailDigest' : 'WhatsApp',
-        recipientEmail: alertEmail,
-        status: 'Unread',
-      });
-
-      setDispatchBanner({
-        message:
-          channel === 'Email'
-            ? `Dispatched 10d/5d/1d Statutory Expiry Email to ${alertEmail} (${itemsPayload.length} monitored certificate(s)).`
-            : `Dispatched 10d/5d/1d Statutory Expiry WhatsApp alert to +91 ${alertWhatsapp} (${itemsPayload.length} monitored certificate(s)).`,
-        whatsappUrl: data?.dispatchReceipt?.whatsappDeepLink,
-        mailtoUrl: data?.dispatchReceipt?.mailtoLink,
-      });
-    } catch {
-      // Fallback
+      setDispatchBanner({ message: receipt.message });
+    } catch (error: any) {
+      setDispatchBanner({ message: error.message || 'Nothing was confirmed sent.' });
     } finally {
       setDispatchingChannel(null);
     }
@@ -2863,7 +2827,7 @@ export const DocumentsExpiryView: React.FC = () => {
                         entityId: defaultId,
                         documentCategory:
                           nextType === 'driver'
-                            ? 'Driver License (DL)'
+                            ? 'Driver Licence'
                             : 'Insurance Policy',
                       });
                     }}
@@ -4355,134 +4319,22 @@ export const GoogleDriveAndNotificationsView: React.FC<{
     setTimeout(() => setSavedThresholds(false), 3000);
   };
 
-  const handleTriggerTestAlertDispatch = async (
-    channel: 'Email' | 'WhatsApp' | 'Both'
-  ) => {
-    setTestingChannel(channel);
+  const [notificationFeedback, setNotificationFeedback] = useState('');
+  const handleTriggerTestAlertDispatch = async (channel: 'Email' | 'WhatsApp' | 'Both') => {
+    setTestingChannel(channel); setNotificationFeedback('');
     try {
-      const emailToUse = alertEmailInput.trim();
-      const waToUse = whatsappInput.trim();
-
-      const response = await fetch('/api/notifications/test-dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel,
-          recipientEmail: emailToUse,
-          whatsappNumber: waToUse,
-          businessName: profile?.businessName || 'FzeeLog Fleet Operations',
-          milestoneItems: milestoneAlerts.map((m) => ({
-            documentLabel: m.documentLabel,
-            targetLabel: m.targetLabel,
-            expiryDate: m.expiryDate,
-            daysRemaining: m.daysRemaining,
-            milestoneBucket: m.milestoneBucket,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to trigger test expiry alert dispatch.');
-      }
-
-      const receipt = await response.json();
-      setTestDispatchReceipt(receipt);
-
-      if (channel === 'Email' || channel === 'Both') {
-        await saveNotificationLog({
-          alertType: 'StatutoryExpiry',
-          severity: 'WARNING',
-          targetLabel: `Email Test → ${emailToUse}`,
-          title: `Test Expiry Alert Mail Dispatched to ${emailToUse}`,
-          message: `10-Day, 5-Day & 1-Day statutory expiry alert test (Insurance, FC, Permit, Driver Licence, Pollution) sent to ${emailToUse}.`,
-          recipientEmail: emailToUse,
-          channel: 'EmailDigest',
-          status: 'Dispatched',
-        });
-      }
-
-      if (channel === 'WhatsApp' || channel === 'Both') {
-        await saveNotificationLog({
-          alertType: 'StatutoryExpiry',
-          severity: 'WARNING',
-          targetLabel: `WhatsApp Test → +91 ${waToUse}`,
-          title: `Test WhatsApp Expiry Alert Dispatched to ${waToUse}`,
-          message: `10-Day, 5-Day & 1-Day statutory expiry alert test (Insurance, FC, Permit, Driver Licence, Pollution) sent to WhatsApp ${waToUse}.`,
-          recipientEmail: emailToUse,
-          channel: 'WhatsApp',
-          status: 'Dispatched',
-        });
-      }
-    } finally {
-      setTestingChannel(null);
-    }
+      const result = await notificationRequest('/test-dispatch', { method: 'POST', body: JSON.stringify({ channel, recipientEmail: alertEmailInput.trim(), testOnly: true }) });
+      setNotificationFeedback(`${result.message} Recipient: ${result.recipientEmail}. Reference: ${result.providerMessageId}`);
+    } catch (error: any) { setNotificationFeedback(error.message); }
+    finally { setTestingChannel(null); }
   };
-
   const handleGenerateAndDispatchDigest = async () => {
-    setDispatchingDigest(true);
+    setDispatchingDigest(true); setNotificationFeedback('');
     try {
-      const totalKm = roundKm(logbookEntries.reduce((s, e) => s + e.kmDay, 0));
-      const grossEarnings = roundCurrency(
-        logbookEntries.reduce((s, e) => s + e.earnings, 0)
-      );
-      const totalOperatingExpenses = roundCurrency(
-        logbookEntries.reduce((s, e) => s + e.totalExpenses, 0)
-      );
-      const totalDriverShare = roundCurrency(
-        logbookEntries.reduce((s, e) => s + e.driverShare, 0)
-      );
-      const netBusinessEarnings = roundCurrency(
-        logbookEntries.reduce((s, e) => s + e.netBusinessEarnings, 0)
-      );
-
-      const response = await fetch('/api/notifications/digest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: profile?.businessName || 'FzeeLog Fleet Operations',
-          recipientEmail: targetEmail,
-          alerts: activeAlerts.map((a) => ({
-            severity: a.severity,
-            targetLabel: a.targetLabel,
-            documentLabel: a.documentLabel,
-            expiryOrDueInfo: a.expiryOrDueInfo,
-          })),
-          financialSummary: {
-            totalKm,
-            grossEarnings,
-            totalOperatingExpenses,
-            totalDriverShare,
-            netBusinessEarnings,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate alert digest on server.');
-      }
-
-      const data = await response.json();
-      const digest = data.digest;
-      setDigestPreview(digest);
-
-      await saveNotificationLog({
-        alertType: 'FinancialDigest',
-        severity:
-          digest.criticalCount > 0
-            ? 'CRITICAL'
-            : digest.warningCount > 0
-            ? 'WARNING'
-            : 'INFO',
-        targetLabel: `${vehicles.length} Vehicles · ${activeAlerts.length} Active Alerts`,
-        title: digest.subject.slice(0, 160),
-        message: `Asia/Kolkata Alert & Financial Digest prepared for ${targetEmail}. Critical: ${digest.criticalCount}, Warning: ${digest.warningCount}. Net Profit: ${formatINR(netBusinessEarnings)}.`,
-        recipientEmail: targetEmail,
-        channel: 'EmailDigest',
-        status: 'Dispatched',
-      });
-    } finally {
-      setDispatchingDigest(false);
-    }
+      const result = await notificationRequest('/test-dispatch', { method: 'POST', body: JSON.stringify({ channel: 'email', recipientEmail: alertEmailInput.trim(), testOnly: false }) });
+      setNotificationFeedback(`${result.message} Recipient: ${result.recipientEmail}. Reference: ${result.providerMessageId}`);
+    } catch (error: any) { setNotificationFeedback(error.message); }
+    finally { setDispatchingDigest(false); }
   };
 
   const handleLogSingleAlert = async (
@@ -4910,8 +4762,8 @@ export const GoogleDriveAndNotificationsView: React.FC<{
             >
               <Send className="w-3.5 h-3.5" />
               {dispatchingDigest
-                ? 'Preparing Digest...'
-                : 'Generate & Log Asia/Kolkata Digest'}
+                ? 'Requesting check...'
+                : 'Email compliance & service check'}
             </button>
 
             <button
@@ -4925,110 +4777,55 @@ export const GoogleDriveAndNotificationsView: React.FC<{
           </div>
         </div>
 
-        {/* Live Test Email & WhatsApp Dispatch Receipt Drawer */}
-        {testDispatchReceipt && (
-          <div className="bg-slate-900 text-white border-2 border-teal-500/60 rounded-xl p-5 space-y-4 shadow-md">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-teal-400" />
-                <span className="text-xs font-mono uppercase tracking-wider text-teal-300">
-                  Test Alert Dispatched · {testDispatchReceipt.generatedAtKolkata} IST · 10d / 5d / 1d Expiry Engine
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {testDispatchReceipt.emailPayload && (
-                  <a
-                    href={`mailto:${encodeURIComponent(
-                      testDispatchReceipt.recipientEmail
-                    )}?subject=${encodeURIComponent(
-                      testDispatchReceipt.emailPayload.subject
-                    )}&body=${encodeURIComponent(
-                      testDispatchReceipt.emailPayload.bodyText
-                    )}`}
-                    className="px-3 py-1 text-xs font-semibold bg-slate-800 text-teal-300 border border-teal-500/40 rounded hover:bg-slate-700 flex items-center gap-1.5"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    Open in Mail Client ({testDispatchReceipt.recipientEmail})
-                  </a>
-                )}
-                {testDispatchReceipt.whatsappPayload && (
-                  <a
-                    href={testDispatchReceipt.whatsappPayload.waMeLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1 text-xs font-semibold bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 flex items-center gap-1.5"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    Send via WhatsApp ({testDispatchReceipt.whatsappNumber})
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const textToCopy = [
-                      testDispatchReceipt.emailPayload
-                        ? `EMAIL TO: ${testDispatchReceipt.emailPayload.to}\nSUBJECT: ${testDispatchReceipt.emailPayload.subject}\n\n${testDispatchReceipt.emailPayload.bodyText}`
-                        : '',
-                      testDispatchReceipt.whatsappPayload
-                        ? `WHATSAPP TO: ${testDispatchReceipt.whatsappPayload.to}\n\n${testDispatchReceipt.whatsappPayload.messageText}`
-                        : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n\n====================\n\n');
-                    navigator.clipboard.writeText(textToCopy);
-                    setCopiedTestReceipt(true);
-                    setTimeout(() => setCopiedTestReceipt(false), 2500);
-                  }}
-                  className="px-3 py-1 text-xs font-semibold bg-teal-500 text-slate-950 rounded hover:bg-teal-400 flex items-center gap-1.5"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  {copiedTestReceipt ? 'Copied Payload' : 'Copy Test Payload'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTestDispatchReceipt(null)}
-                  className="p-1 text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {testDispatchReceipt.emailPayload && (
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-mono text-teal-300">
-                    <span>EMAIL DISPATCH → {testDispatchReceipt.emailPayload.to}</span>
-                    <span className="px-2 py-0.5 bg-teal-950 text-teal-300 rounded border border-teal-700">
-                      {testDispatchReceipt.emailPayload.status}
-                    </span>
-                  </div>
-                  <p className="text-xs font-mono text-slate-300">
-                    <strong>Subject:</strong> {testDispatchReceipt.emailPayload.subject}
-                  </p>
-                  <pre className="text-[11px] font-mono text-slate-300 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
-                    {testDispatchReceipt.emailPayload.bodyText}
-                  </pre>
-                </div>
-              )}
-
-              {testDispatchReceipt.whatsappPayload && (
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-mono text-emerald-400">
-                    <span>WHATSAPP DISPATCH → {testDispatchReceipt.whatsappPayload.to}</span>
-                    <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-700">
-                      {testDispatchReceipt.whatsappPayload.status}
-                    </span>
-                  </div>
-                  <pre className="text-[11px] font-mono text-slate-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
-                    {testDispatchReceipt.whatsappPayload.messageText}
-                  </pre>
-                </div>
-              )}
-            </div>
+        <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-emerald-900">
+            Test send (free, one click)
+          </p>
+          <p className="text-xs text-emerald-800">
+            Sends one short test message right now through your own WhatsApp
+            and email app - completely free, no paid API, and nothing is sent
+            automatically. WhatsApp opens with the message prefilled; Email
+            opens your mail app with the message prefilled.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const digits = (whatsappInput || '').replace(/\D/g, '');
+                const text = encodeURIComponent(
+                  'FzeeLogBook test message: your alert notifications are set up correctly. (One-click test - free, nothing is sent automatically.)'
+                );
+                window.open(
+                  digits
+                    ? `https://wa.me/${digits}?text=${text}`
+                    : `https://wa.me/?text=${text}`,
+                  '_blank',
+                  'noopener'
+                );
+              }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold"
+            >
+              Test WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const subject = encodeURIComponent('FzeeLogBook test message');
+                const body = encodeURIComponent(
+                  'FzeeLogBook test message: your alert notifications are set up correctly. (One-click test - free, nothing is sent automatically.)'
+                );
+                window.location.href = `mailto:${
+                  alertEmailInput || ''
+                }?subject=${subject}&body=${body}`;
+              }}
+              className="px-4 py-2 bg-sky-600 text-white rounded-xl text-sm font-semibold"
+            >
+              Test Email
+            </button>
           </div>
-        )}
+        </div>
 
+        {notificationFeedback && <div role="status" className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-800 break-words">{notificationFeedback}</div>}
         {/* Digest Preview Drawer when generated */}
         {digestPreview && (
           <div className="bg-slate-900 text-white border border-slate-800 rounded-xl p-5 space-y-3">

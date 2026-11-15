@@ -23,6 +23,15 @@ export const hashPin = async (pin: string): Promise<string> => {
     .join('');
 };
 
+
+/**
+ * Deterministic Firebase password for an organization member login.
+ * Members authenticate with their email + access PIN; Firebase passwords are
+ * never chosen or seen by anyone (the PIN hash stays the stored secret).
+ */
+export const deriveMemberPassword = (pin: string): string =>
+  `fzlb-member:${pin.trim().slice(0, 16)}`;
+
 export interface PinCredentials {
   accessPinHash?: string;
   accessPin?: string;

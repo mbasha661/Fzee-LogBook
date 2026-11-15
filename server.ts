@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
+import { createNotificationRouter } from './src/server/notificationApi';
 import { GoogleGenAI, Type } from '@google/genai';
 import {
   NotificationScheduler,
@@ -10,7 +10,11 @@ import {
   type SchedulerSnapshot,
 } from './src/server/notificationScheduler';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '127.0.0.1';
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error('PORT must be an integer between 1 and 65535.');
+}
 
 function getGeminiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -21,16 +25,17 @@ function getGeminiClient(): GoogleGenAI | null {
     apiKey,
     httpOptions: {
       headers: {
-        'User-Agent': 'aistudio-build',
+        'User-Agent': 'fzeelogbook-standalone',
       },
     },
   });
 }
 
-async function startServer() {
+export async function createApp() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
-
+  app.get('/api/health', (_req, res) => res.json({ ok: true, schedulerEnabled: false }));
+  app.use('/api/notifications', createNotificationRouter());
   // Phase 4: Check server-side AI / 3D reconstruction service configuration
   app.get('/api/vehicle-3d/status', (_req, res) => {
     const hasGeminiKey = Boolean(
@@ -200,404 +205,14 @@ Return a JSON calibration profile to configure our Three.js multi-part parametri
     }
   });
 
-  // Phase 5: Server-side Compliance & Preventive Maintenance Digest Generator
-  app.post('/api/notifications/digest', (req, res) => {
-    try {
-      const {
-        businessName,
-        recipientEmail,
-        alertsCount,
-        criticalCount,
-        warningCount,
-        topAlerts,
-        alerts,
-        fleetNetEarnings,
-        financialSummary,
-      } = req.body as {
-        businessName?: string;
-        recipientEmail?: string;
-        alertsCount?: number;
-        criticalCount?: number;
-        warningCount?: number;
-        topAlerts?: Array<{ title: string; detail: string; severity: string }>;
-        alerts?: Array<{
-          severity: string;
-          targetLabel: string;
-          documentLabel: string;
-          expiryOrDueInfo: string;
-        }>;
-        fleetNetEarnings?: number;
-        financialSummary?: {
-          totalKm: number;
-          grossEarnings: number;
-          totalOperatingExpenses: number;
-          totalDriverShare: number;
-          netBusinessEarnings: number;
-        };
-      };
-
-      const targetEmail = (recipientEmail || '').trim();
-      if (!targetEmail) {
-        res.status(400).json({
-          error: 'recipientEmail is required to generate an alert digest.',
-        });
-        return;
-      }
-      const kolkataTime = new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
-
-      const incomingAlerts = Array.isArray(alerts) ? alerts : [];
-      const computedCrit =
-        criticalCount ??
-        incomingAlerts.filter(
-          (a) =>
-            a.severity === 'EXPIRED' ||
-            a.severity === 'URGENT' ||
-            a.severity === 'CRITICAL'
-        ).length;
-      const computedWarn =
-        warningCount ??
-        incomingAlerts.filter((a) => a.severity === 'WARNING').length;
-      const totalAlerts = alertsCount ?? incomingAlerts.length;
-
-      const netVal = Number(
-        financialSummary?.netBusinessEarnings ?? fleetNetEarnings ?? 0
-      );
-
-      const formattedAlertLines =
-        incomingAlerts.length > 0
-          ? incomingAlerts
-              .slice(0, 12)
-              .map(
-                (a, idx) =>
-                  `  ${idx + 1}. [${a.severity}] ${a.targetLabel} — ${a.documentLabel} (${a.expiryOrDueInfo})`
-              )
-              .join('\n')
-          : (topAlerts || [])
-              .slice(0, 8)
-              .map(
-                (a, idx) => `  ${idx + 1}. [${a.severity}] ${a.title} (${a.detail})`
-              )
-              .join('\n') || '  • All fleet vehicles and driver licenses are compliant.';
-
-      const digestSubject = `FzeeLog Alert & Financial Digest — ${businessName || 'FzeeLog Fleet'} (${totalAlerts} Active Alerts)`;
-      const bodyText = [
-        `====================================================================`,
-        `FZEELOG — DAILY COMPLIANCE, MAINTENANCE & FINANCIAL DIGEST`,
-        `====================================================================`,
-        `Business Name      : ${businessName || 'FzeeLog Fleet Operations'}`,
-        `Target Account     : ${targetEmail}`,
-        `Generated (IST)    : ${kolkataTime} (Asia/Kolkata)`,
-        `Currency / Distance: INR (₹) / Kilometres (km)`,
-        `--------------------------------------------------------------------`,
-        `1. FINANCIAL & SHIFT SUMMARY (DRIVER SHARE KEPT SEPARATE FROM OPEX)`,
-        `   • Total Distance Driven     : ${Number(financialSummary?.totalKm ?? 0).toFixed(1)} km`,
-        `   • Gross Shift Earnings      : ₹${Number(financialSummary?.grossEarnings ?? 0).toFixed(2)}`,
-        `   • Driver Share (Separated)  : ₹${Number(financialSummary?.totalDriverShare ?? 0).toFixed(2)}`,
-        `   • Operating Expenses (OpEx) : ₹${Number(financialSummary?.totalOperatingExpenses ?? 0).toFixed(2)}`,
-        `   • Net Business Surplus      : ₹${netVal.toFixed(2)}`,
-        `--------------------------------------------------------------------`,
-        `2. STATUTORY EXPIRY & PREVENTIVE SERVICE ALERTS (${totalAlerts} Total | ${computedCrit} Critical/Urgent | ${computedWarn} Warning)`,
-        formattedAlertLines,
-        `====================================================================`,
-      ].join('\n');
-
-      const shortMessage = `Prepared at ${kolkataTime} (Asia/Kolkata) for ${businessName || 'FzeeLog Fleet'} -> ${targetEmail}. Critical/Expired: ${computedCrit}, Warnings: ${computedWarn}. Net Surplus: Rs.${netVal.toFixed(2)}.`.slice(
-        0,
-        790
-      );
-
-      res.json({
-        dispatchedAt: new Date().toISOString(),
-        recipientEmail: targetEmail,
-        title: digestSubject.slice(0, 160),
-        message: shortMessage,
-        digest: {
-          subject: digestSubject,
-          bodyText,
-          recipientEmail: targetEmail,
-          generatedAtKolkata: kolkataTime,
-          criticalCount: computedCrit,
-          warningCount: computedWarn,
-        },
-      });
-    } catch (err: any) {
-      res.status(500).json({
-        error: err?.message || 'Failed to generate fleet alert digest.',
-      });
-    }
-  });
-
-  // ---- Server-side scheduled notifications (FzeeLogBook) ----
-  // Official channels only: WhatsApp Cloud API and an SMTP/relay webhook.
-  // Personal WhatsApp Web is never automated. Consent-gated, deduplicated,
-  // retried, and every attempt is written to the delivery log.
-  const sendViaChannel: SendFn = async (channel, recipient, subject, body) => {
-    if (channel === 'whatsapp') {
-      if (!process.env.WHATSAPP_CLOUD_API_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
-        return { ok: false, notConfigured: true, error: 'WhatsApp Cloud API credentials not set.' };
-      }
-      const to = recipient.replace(/\D/g, '');
-      const normalized = to.length === 10 ? `91${to}` : to;
-      try {
-        const waRes = await fetch(
-          `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${process.env.WHATSAPP_CLOUD_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: normalized,
-              type: 'text',
-              text: { body: `*${subject}*\n\n${body}` },
-            }),
-          }
-        );
-        return waRes.ok ? { ok: true } : { ok: false, error: `WhatsApp API HTTP ${waRes.status}` };
-      } catch (err: any) {
-        return { ok: false, error: err?.message || 'WhatsApp dispatch failed.' };
-      }
-    }
-    // email: dispatch through a configured SMTP/relay webhook (e.g. an SMTP
-    // bridge). No webhook configured means the channel is honestly reported
-    // as not configured instead of faking a send.
-    if (!process.env.NOTIFICATION_EMAIL_WEBHOOK_URL) {
-      return { ok: false, notConfigured: true, error: 'Email relay webhook not configured.' };
-    }
-    try {
-      const mailRes = await fetch(process.env.NOTIFICATION_EMAIL_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: recipient, subject, body }),
-      });
-      return mailRes.ok ? { ok: true } : { ok: false, error: `Email relay HTTP ${mailRes.status}` };
-    } catch (err: any) {
-      return { ok: false, error: err?.message || 'Email relay dispatch failed.' };
-    }
-  };
-
-  const notificationScheduler = new NotificationScheduler(sendViaChannel);
-  setInterval(() => {
-    notificationScheduler.tick().catch((err) =>
-      console.error('[notifications] scheduler tick failed:', err)
-    );
-  }, 60_000);
-
-  // Client syncs its signed-in account data + notification settings here.
-  app.post('/api/notifications/scheduler/sync', (req, res) => {
-    try {
-      const { settings, snapshot } = req.body as {
-        settings?: Partial<SchedulerSettings>;
-        snapshot?: SchedulerSnapshot;
-      };
-      if (settings) notificationScheduler.updateSettings(settings);
-      if (snapshot) notificationScheduler.updateSnapshot(snapshot);
-      res.json({
-        ok: true,
-        settings: notificationScheduler.getSettings(),
-        snapshotUpdatedAt: notificationScheduler['snapshot'] ? new Date().toISOString() : null,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || 'Scheduler sync failed.' });
-    }
-  });
-
-  app.get('/api/notifications/scheduler/delivery-log', (_req, res) => {
-    res.json({ entries: notificationScheduler.getDeliveryLog() });
-  });
-
-  app.post('/api/notifications/scheduler/tick-now', async (_req, res) => {
-    await notificationScheduler.tick();
-    res.json({ ok: true, entries: notificationScheduler.getDeliveryLog().length });
-  });
-
-  // 10-Day, 5-Day & 1-Day Statutory Expiry Alert Test Trigger (Email + WhatsApp)
-  app.post('/api/notifications/test-dispatch', async (req, res) => {
-    try {
-      const {
-        businessName,
-        accountMode,
-        recipientEmail,
-        whatsappNumber,
-        channel,
-        milestonesDays,
-        statutoryItems,
-      } = req.body as {
-        businessName?: string;
-        accountMode?: string;
-        recipientEmail?: string;
-        whatsappNumber?: string;
-        channel?: 'email' | 'whatsapp' | 'both';
-        milestonesDays?: number[];
-        statutoryItems?: Array<{
-          category: string;
-          entityLabel: string;
-          documentNumber: string;
-          expiryDate: string;
-          daysRemaining: number;
-          milestoneStage: string;
-        }>;
-      };
-
-      const targetEmail = (recipientEmail || '').trim();
-      const rawPhone = (whatsappNumber || '').replace(/\D/g, '');
-      const normalizedChannel = (channel || 'both').toLowerCase();
-      if (!targetEmail) {
-        res.status(400).json({
-          error: 'recipientEmail is required for a test dispatch.',
-        });
-        return;
-      }
-      if (
-        (normalizedChannel === 'whatsapp' || normalizedChannel === 'both') &&
-        !rawPhone
-      ) {
-        res.status(400).json({
-          error: 'whatsappNumber is required for WhatsApp test dispatch.',
-        });
-        return;
-      }
-      const normalizedWaPhone =
-        rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
-      const displayWaPhone = normalizedWaPhone
-        ? `+${normalizedWaPhone.slice(0, 2)} ${normalizedWaPhone.slice(2)}`
-        : 'not provided';
-      const activeMilestones =
-        Array.isArray(milestonesDays) && milestonesDays.length > 0
-          ? milestonesDays.join(' Days, ') + ' Day(s)'
-          : '10 Days, 5 Days, 1 Day';
-
-      const kolkataTime = new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        dateStyle: 'medium',
-        timeStyle: 'medium',
-      });
-
-      const items = Array.isArray(statutoryItems) ? statutoryItems : [];
-      const sampleOrLiveLines =
-        items.length > 0
-          ? items
-              .slice(0, 10)
-              .map(
-                (item, idx) =>
-                  `${idx + 1}. [${item.milestoneStage}] ${item.category} — ${item.entityLabel} | Doc: ${item.documentNumber} | Expiry: ${item.expiryDate} (${item.daysRemaining}d)`
-              )
-              .join('\n')
-          : [
-              `1. [10-DAY ALERT] Insurance — TN-38-CZ-4512 | Policy Expiry in 10 Days`,
-              `2. [5-DAY ALERT] Fitness Certificate (FC) — TN-37-DX-8901 | FC Expiry in 5 Days`,
-              `3. [5-DAY ALERT] Permit — TN-38-CZ-4512 | Commercial Permit Expiry in 5 Days`,
-              `4. [1-DAY ALERT] Driver Licence — Karthikayan V. | DL Expiry in 1 Day`,
-              `5. [1-DAY ALERT] Pollution (PUCC) — TN-66-AF-2319 | PUCC Expiry in 1 Day`,
-            ].join('\n');
-
-      const emailSubject = `[FzeeLog TEST ALERT] 10d / 5d / 1d Expiry Reminder (Insurance, FC, Permit, DL, Pollution) — ${businessName || 'FzeeLog Fleet'}`;
-      const emailBody = [
-        `FZEELOG STATUTORY EXPIRY ALERT TEST DISPATCH (10 DAYS / 5 DAYS / 1 DAY)`,
-        `========================================================================`,
-        `Organization / Account : ${businessName || 'FzeeLog Fleet Operations'} (${accountMode || 'Organization'})`,
-        `Recipient Email ID     : ${targetEmail}`,
-        `WhatsApp Alert Number  : ${displayWaPhone} (${rawPhone || 'not provided'})`,
-        `Trigger Schedule       : Before ${activeMilestones} of Expiry`,
-        `Monitored Categories   : Insurance, Fitness Certificate (FC), Permit, Driver Licence, Pollution (PUCC)`,
-        `Dispatched Timestamp   : ${kolkataTime} IST (Asia/Kolkata)`,
-        `------------------------------------------------------------------------`,
-        `STATUTORY COMPLIANCE SCHEDULE & MILESTONE STATUS:`,
-        sampleOrLiveLines,
-        `========================================================================`,
-        `Automated FzeeLog Compliance Engine · INR (₹) · km · Asia/Kolkata`,
-      ].join('\n');
-
-      const whatsappText = [
-        `*FzeeLog Statutory Expiry Alert Test*`,
-        `🏢 *Account:* ${businessName || 'FzeeLog Fleet'} (${accountMode || 'Organization'})`,
-        `📧 *Email:* ${targetEmail}`,
-        `📱 *WhatsApp:* ${displayWaPhone}`,
-        `⏰ *Schedule:* 10 Days, 5 Days & 1 Day Before Expiry`,
-        `📋 *Categories:* Insurance, FC, Permit, Driver Licence & Pollution`,
-        `--------------------------------`,
-        sampleOrLiveLines,
-        `--------------------------------`,
-        `🕒 _Tested at ${kolkataTime} IST_`,
-      ].join('\n');
-
-      // Optional Meta WhatsApp Cloud API live call if configured in environment
-      let cloudApiDispatched = false;
-      if (
-        (normalizedChannel === 'whatsapp' || normalizedChannel === 'both') &&
-        process.env.WHATSAPP_CLOUD_API_TOKEN &&
-        process.env.WHATSAPP_PHONE_NUMBER_ID
-      ) {
-        try {
-          const waRes = await fetch(
-            `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${process.env.WHATSAPP_CLOUD_API_TOKEN}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                to: normalizedWaPhone,
-                type: 'text',
-                text: { body: whatsappText },
-              }),
-            }
-          );
-          cloudApiDispatched = waRes.ok;
-        } catch {
-          cloudApiDispatched = false;
-        }
-      }
-
-      const mailtoUrl = `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      const whatsappUrl = `https://wa.me/${normalizedWaPhone}?text=${encodeURIComponent(whatsappText)}`;
-
-      res.json({
-        ok: true,
-        channel: normalizedChannel,
-        dispatchedAt: new Date().toISOString(),
-        dispatchedAtKolkata: kolkataTime,
-        targetEmail,
-        targetWhatsapp: rawPhone,
-        normalizedWhatsapp: normalizedWaPhone,
-        displayWhatsapp: displayWaPhone,
-        cloudApiDispatched,
-        emailPayload: {
-          to: targetEmail,
-          subject: emailSubject,
-          body: emailBody,
-          mailtoUrl,
-        },
-        whatsappPayload: {
-          to: normalizedWaPhone,
-          text: whatsappText,
-          whatsappUrl,
-        },
-      });
-    } catch (err: any) {
-      res.status(500).json({
-        error:
-          err?.message ||
-          'Failed to trigger test email and WhatsApp expiry dispatch.',
-      });
-    }
-  });
-
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
@@ -605,9 +220,10 @@ Return a JSON calibration profile to configure our Three.js multi-part parametri
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`FzeeLog full-stack server running on http://0.0.0.0:${PORT}`);
-  });
+  return app;
 }
-
-startServer();
+async function startServer() {
+  const app = await createApp();
+  app.listen(PORT, HOST, () => console.log(`FzeeLog server running on http://${HOST}:${PORT}`));
+}
+if (!process.env.VERCEL) startServer().catch((err) => { console.error(err); process.exitCode = 1; });

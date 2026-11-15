@@ -1,25 +1,104 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    --font-sans: 'Public Sans', system-ui, -apple-system, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-  }
-
-  body {
-    font-family: var(--font-sans);
-    color: #0f172a;
-    background-color: #f8fafc;
-  }
-
-  h1, h2, h3, h4, .font-display {
-    font-family: var(--font-display);
-    text-wrap: balance;
-  }
-
-  .font-mono, .tabular-nums {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
+@theme {
+  --color-slate-50: var(--surface-base);
+  --color-slate-100: var(--surface-subtle);
+  --color-slate-200: var(--line);
+  --color-slate-300: var(--line-strong);
+  --color-slate-400: var(--muted);
+  --color-slate-500: var(--secondary);
+  --color-slate-600: var(--copy);
+  --color-slate-700: var(--heading);
+  --color-slate-800: var(--strong);
+  --color-slate-900: var(--ink);
+  --color-slate-950: var(--deep);
+  --color-white: var(--surface);
+  --color-teal-50: var(--accent-soft);
+  --color-teal-100: var(--accent-pale);
+  --color-teal-200: var(--accent-line);
+  --color-teal-300: var(--accent-text);
+  --color-teal-400: var(--accent);
+  --color-teal-500: var(--accent);
+  --color-teal-600: var(--accent-solid);
+  --color-teal-700: var(--accent-text);
+  --color-teal-800: var(--accent-text);
+  --color-teal-900: var(--accent-deep);
 }
+:root {
+  --font-display: 'Outfit', system-ui, sans-serif;
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --surface: #ffffff; --surface-base: #f8fafc; --surface-subtle: #f1f3f5;
+  --line: #e2e5e9; --line-strong: #cbd0d7; --muted: #687385;
+  --secondary: #5b6575; --copy: #475569; --heading: #334155;
+  --strong: #1e293b; --ink: #111827; --deep: #080b12;
+  --accent: #e8243e; --accent-solid: #dc1734; --accent-text: #c41731;
+  --accent-soft: #fff5f6; --accent-pale: #ffe8eb; --accent-line: #ffc6ce; --accent-deep: #8d1427;
+}
+:root[data-theme="dark"] {
+  --surface: #1c1e24; --surface-base: #101114; --surface-subtle: #252831;
+  --line: #343844; --line-strong: #454c5a; --muted: #a4adbd;
+  --secondary: #acb5c5; --copy: #c4cbd7; --heading: #d7dce6;
+  --strong: #e3e7ef; --ink: #f2f4f8; --deep: #fcfcfd;
+  --accent: #ff5269; --accent-solid: #e72e48; --accent-text: #ff8798;
+  --accent-soft: #301a22; --accent-pale: #49212d; --accent-line: #7f3343; --accent-deep: #7d2034;
+}
+@layer base {
+  body { font-family: var(--font-sans); color: var(--ink); background: var(--surface-base); }
+  h1,h2,h3,h4,.font-display { font-family: var(--font-display); text-wrap: balance; }
+  .font-mono,.tabular-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  button,select { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  input,select,textarea { color-scheme: inherit; }
+}
+.fzee-brand { display:flex; gap:9px; align-items:center; flex-shrink:0; color:var(--ink); }
+.brand-name { font-weight:800; font-size:21px; letter-spacing:-.8px; line-height:1.1; white-space:nowrap; }
+.brand-name span { color:var(--accent-solid); font-style:italic; margin-right:2px; }
+.brand-tagline { color:var(--secondary); font-size:9px; letter-spacing:2.2px; font-style:italic; margin-top:5px; white-space:nowrap; }
+.fzee-brand-compact img { width:29px; height:29px; }
+.fzee-brand-compact .brand-name { font-size:16px; }
+.fzee-brand-compact .brand-tagline { display:none; }
+.theme-switch { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--copy); padding:5px 8px; font-size:12px; white-space:nowrap; }
+.theme-switch>span:first-child { color:var(--accent-text); font-size:17px; }
+.theme-switch select { background:transparent; color:var(--copy); border:0; max-width:80px; }
+.theme-switch option { background:var(--surface); color:var(--ink); }
+.auth-page { background:radial-gradient(ellipse at 50% 0%,var(--accent-pale),transparent 60%),var(--surface-base); color:var(--ink); }
+.auth-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:48px; }
+.auth-eyebrow { font-size:10px; font-weight:600; letter-spacing:1.5px; color:var(--accent-text); }
+.auth-card { background:var(--surface); border-color:var(--line); box-shadow:0 12px 40px #00000008; }
+.auth-segments { background:var(--surface-subtle); }
+.auth-selected { background:var(--surface); color:var(--accent-text); box-shadow:0 1px 4px #00000015; }
+.auth-input { background:var(--surface-base); border-color:var(--line-strong); color:var(--ink); }
+.auth-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-pale); }
+.auth-submit { background:var(--accent-solid); color:#fff; box-shadow:0 3px 9px #dc173421; }
+.desktop-navigation { background:var(--surface); border-bottom:1px solid var(--line); align-items:center; gap:24px; padding:14px 24px 0; flex-wrap:wrap; }
+.desktop-brand { padding-bottom:14px; }
+.desktop-nav-items { display:flex; align-items:center; gap:4px; overflow-x:auto; flex:1 0 100%; order:3; width:100%; }
+.desktop-nav-items button { display:flex; align-items:center; gap:6px; padding:13px 11px; white-space:nowrap; font-size:12px; color:var(--copy); border-bottom:2px solid transparent; }
+.desktop-nav-items button:hover { background:var(--surface-base); }
+.desktop-nav-items button.nav-active { border-bottom-color:var(--accent-solid); color:var(--accent-text); font-weight:600; }
+.nav-account { color:var(--copy); font-size:12px; margin-left:auto; align-self:flex-start; padding:10px 14px; border:1px solid var(--line); border-radius:8px; }
+/* Action fills keep white lettering in either theme. */
+[class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-teal-900"], [class~="bg-red-600"], [class~="bg-blue-600"], [class~="bg-emerald-600"] { color:#fff; }
+[class~="bg-slate-900"][class~="text-white"], [class~="bg-slate-950"][class~="text-white"] { color:var(--surface); }
+:root[data-theme="dark"] [class~="bg-emerald-50"], :root[data-theme="dark"] [class~="bg-green-50"] { background-color:#15392e; }
+:root[data-theme="dark"] [class~="bg-red-50"], :root[data-theme="dark"] [class~="bg-rose-50"] { background-color:#3c2029; }
+:root[data-theme="dark"] [class~="bg-amber-50"], :root[data-theme="dark"] [class~="bg-yellow-50"] { background-color:#3c301e; }
+:root[data-theme="dark"] [class~="bg-blue-50"], :root[data-theme="dark"] [class~="bg-sky-50"], :root[data-theme="dark"] [class~="bg-indigo-50"] { background-color:#1c2b45; }
+:root[data-theme="dark"] [class*="text-emerald-7"], :root[data-theme="dark"] [class*="text-emerald-8"], :root[data-theme="dark"] [class*="text-emerald-6"] { color:#75d6af; }
+:root[data-theme="dark"] [class*="text-red-7"], :root[data-theme="dark"] [class*="text-red-8"], :root[data-theme="dark"] [class*="text-red-6"] { color:#ff929d; }
+:root[data-theme="dark"] [class*="text-amber-7"], :root[data-theme="dark"] [class*="text-amber-8"] { color:#f5cb80; }
+:root[data-theme="dark"] [class*="text-blue-7"], :root[data-theme="dark"] [class*="text-blue-8"] { color:#9bbdf9; }
+@media (max-width:639px) { .auth-toolbar { margin-bottom:30px; } header .truncate { white-space:normal; } }
+@media print { .theme-switch,.desktop-navigation { display:none!important; } :root[data-theme="dark"] { --surface:#fff; --surface-base:#fff; --ink:#111827; --copy:#475569; --heading:#334155; --strong:#1e293b; } }
+.fixed[class~="bg-slate-950/"] { background-color:rgb(0 0 0 / .65); }
+:root[data-theme="dark"] [class*="text-amber-9"] { color:#f5cb80; }
+/* White is a literal foreground on solid actions, never a surface token. */
+.text-white { color:#fff; }
+:root[data-theme="dark"] .bg-slate-900.text-white,
+:root[data-theme="dark"] .bg-slate-950.text-white { background-color:#343844; color:#fff; }
+:root[data-theme="dark"] .bg-slate-900.text-white:hover { background-color:#454c5a; }
+:root[data-theme="dark"] button.bg-emerald-700 { color:#fff; }
+:root[data-theme="dark"] .fixed[class*="bg-slate-900/"],
+:root[data-theme="dark"] .fixed[class*="bg-slate-950/"] { background-color:rgb(0 0 0 / .72); }

@@ -1,0 +1,6 @@
+.env*
+!.env.production.local
+node_modules
+dist
+dist-server
+qa-live.ts

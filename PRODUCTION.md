@@ -1,3 +1,13 @@
+# Notification repair status (26 October 2026)
+
+Authenticated, verified-account on-demand email is implemented. See NOTIFICATIONS_UPDATE.md for the current security model, setup, scope and limitations. Gmail SMTP authentication and one explicitly approved self-test to the owner were verified, including INBOX receipt. The signed-in production app flow has not been exercised against the owner's account. Automated scheduling and WhatsApp remain OFF. Older notes below describe earlier versions and do not establish present delivery capability.
+
+# Current deployment status (25 October 2026)
+
+The real-account update supersedes older demo instructions below. The app is live on the existing Vercel Hobby deployment, using Firebase Spark email/password Auth and owner-only Firestore rules. Default signup is clean; no automatic demo or seeded records. Individual and Organization owner workspaces persist privately. Live two-account authorization checks passed. Organizations do not yet support invited shared-team accounts. Shared notification endpoints are disabled. Password reset request accepted, inbox receipt untested. No billing upgrade.
+
+## Earlier integration implementation notes
+
 # FzeeLog — Production Guide
 
 ## What "production ready" covers here
@@ -9,7 +19,7 @@
   login always requires a PIN (a blank form cannot resolve or sign in as a
   member), and new members must be given an explicit PIN - there is no
   well-known default. Gemini/WhatsApp/Supabase secrets stay server-side or in
-  AI Studio Secrets; only `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are
+  your private server environment; only `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are
   client-exposed (both are public-by-design values).
 - **No personal data in source**: the app ships with no hardcoded personal
   emails or phone numbers. Alert recipients come from each user's own profile
@@ -23,14 +33,14 @@
   shows a recovery screen instead of a white page.
 - **Performance**: the Three.js 3D viewer is code-split and loads on demand;
   the initial JS bundle is ~1.6 MB (452 KB gzip) instead of ~2.6 MB.
-- **Tests**: 171 automated tests (see below).
+- **Tests**: 178 automated tests (see below).
 
 ## Run the checks
 
 ```bash
 npm install
 npm run lint     # strict TypeScript, zero errors
-npm test         # 171 vitest cases
+npm test         # 178 vitest cases
 npm run build    # production bundle in dist/
 ```
 
@@ -59,11 +69,10 @@ npm run build    # production bundle in dist/
 1. **Firestore rules**: deploy `firestore.rules` to the Firebase project
    (`firebase deploy --only firestore:rules`). The app enforces tenant
    isolation only once these rules are live.
-2. **Secrets**: set `GEMINI_API_KEY` (AI Studio Secrets) and, optionally,
+2. **Secrets**: set `GEMINI_API_KEY` (your private server environment) and, optionally,
    `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for PostgreSQL sync and
    `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` for WhatsApp alerts.
-3. **Publish** via the AI Studio "Publish" button (Cloud Run). Review the
-   generated URL and sharing settings before sharing it.
+3. **Private server**: run `npm run build` and `npm start`. Do not expose it publicly until the API authentication and durable scheduler work below is complete. No deployment has been performed.
 4. **Demo PINs** (change before real users): M. Basha `1234`, Karthik `2222`,
    Priya `3333`, Murugan `4444`.
 
@@ -95,11 +104,11 @@ date. Guarantees:
 
 | Integration | Required env / action | Without it |
 | --- | --- | --- |
-| Firebase (auth + Firestore) | AI Studio Secrets; deploy `firestore.rules` | demo mode only, in-memory |
+| Firebase (auth + Firestore) | `VITE_FIREBASE_*` configuration; deploy `firestore.rules` | demo mode only, in-memory |
 | Google Drive backups | in-app Google OAuth (least-privilege Drive scope) to the target account | backup buttons stay disconnected-labeled |
 | WhatsApp alerts | `WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (Meta Cloud API) | WhatsApp dispatches logged SKIPPED |
 | Email alerts | `NOTIFICATION_EMAIL_WEBHOOK_URL` (SMTP relay accepting `{to,subject,body}`) | email dispatches logged SKIPPED |
-| Gemini AI / 3D | `GEMINI_API_KEY` (AI Studio Secrets) | AI/3D endpoints return not-configured |
+| Gemini AI / 3D | `GEMINI_API_KEY` (your private server environment) | AI/3D endpoints return not-configured |
 | Supabase (optional) | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (+ migrations) | PostgreSQL sync disabled |
 
 ## Known limitations before real multi-user rollout
@@ -112,3 +121,7 @@ date. Guarantees:
   Google sign-in and the Firestore rules deployed.
 - Email/WhatsApp expiry alerts require the Meta WhatsApp Cloud credentials;
   without them alerts are logged in-app only.
+
+## Standalone constraints
+
+See README.md for exact Firebase configuration and standalone commands. Notifications use one process-local settings/snapshot/delivery log, not durable multi-tenant storage. Restart clears dedupe/retries and needs a new client sync. The browser can close only after sync, while the server remains running. Meta template handling and live provider verification require work before unattended delivery. Authenticated API access, per-account scheduler isolation, durable state and emulator rules verification are public-rollout blockers, not completed checks.

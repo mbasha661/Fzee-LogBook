@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFleet } from '../context/FleetContext';
+import { notificationRequest } from '../lib/notificationClient';
 import { AttendanceStatus, DailyLogbookEntry } from '../types/fleet';
 import {
   aggregateLogbookByPeriod,
@@ -120,61 +121,16 @@ export const LogbookView: React.FC<{
         });
         return;
       }
-      const res = await fetch('/api/notifications/test-dispatch', {
+      const data = await notificationRequest('/test-dispatch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel,
-          recipientEmail: targetEmail,
-          whatsappNumber: targetWa,
-          businessName: profile?.businessName || 'FzeeLog Fleet Operations',
-        }),
+        body: JSON.stringify({ channel, recipientEmail: targetEmail, testOnly: true }),
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => null);
-        throw new Error(errBody?.error || 'Test dispatch failed');
-      }
-      const data = await res.json();
-
-      if (channel === 'Email' || channel === 'Both') {
-        await saveNotificationLog({
-          alertType: 'StatutoryExpiry',
-          severity: 'WARNING',
-          targetLabel: `Email Test → ${targetEmail}`,
-          title: `Test Expiry Alert Mail Dispatched to ${targetEmail}`,
-          message: `10d/5d/1d statutory expiry alert test (Insurance, FC, Permit, Driver Licence, Pollution) sent to ${targetEmail}.`,
-          recipientEmail: targetEmail,
-          channel: 'EmailDigest',
-          status: 'Dispatched',
-        });
-      }
-      if (channel === 'WhatsApp' || channel === 'Both') {
-        await saveNotificationLog({
-          alertType: 'StatutoryExpiry',
-          severity: 'WARNING',
-          targetLabel: `WhatsApp Test → +91 ${targetWa}`,
-          title: `Test WhatsApp Expiry Alert Dispatched to ${targetWa}`,
-          message: `10d/5d/1d statutory expiry alert test (Insurance, FC, Permit, Driver Licence, Pollution) sent to WhatsApp ${targetWa}.`,
-          recipientEmail: targetEmail,
-          channel: 'WhatsApp',
-          status: 'Dispatched',
-        });
-      }
-
       setQuickTestBanner({
-        message: `Test ${channel} Expiry Alert (10d, 5d, 1d — Insurance, FC, Permit, Driver Licence, Pollution) dispatched to ${targetEmail} & WhatsApp ${targetWa} at ${data.generatedAtKolkata} IST.`,
-        waMeLink: data.whatsappPayload?.waMeLink,
-        mailtoLink: data.emailPayload
-          ? `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent(
-              data.emailPayload.subject
-            )}&body=${encodeURIComponent(data.emailPayload.bodyText)}`
-          : undefined,
+        message: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}. Check your inbox and spam folder.`,
       });
     } catch (err: any) {
       setQuickTestBanner({
-        message: `Test ${channel} dispatch failed: ${
-          err?.message || 'unexpected error'
-        }`,
+        message: err?.message || 'Could not send. Nothing was sent.',
       });
     } finally {
       setQuickTestBusy(null);
@@ -183,6 +139,8 @@ export const LogbookView: React.FC<{
 
   // Inline quick-edit row state for editing directly inside the 15-Column Ledger
   const [inlineRowId, setInlineRowId] = useState<string | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
   const [inlineDraft, setInlineDraft] = useState<{
     startingKm: number;
     endingKm: number;
@@ -197,6 +155,7 @@ export const LogbookView: React.FC<{
   } | null>(null);
 
   const startInlineEdit = (entry: DailyLogbookEntry) => {
+    setInlineError(null);
     setInlineRowId(entry.id);
     setInlineDraft({
       startingKm: entry.startingKm,
@@ -213,18 +172,37 @@ export const LogbookView: React.FC<{
   };
 
   const handleSaveInlineEdit = async (entry: DailyLogbookEntry) => {
-    if (!inlineDraft) return;
-    if (inlineDraft.endingKm < inlineDraft.startingKm) return;
-    await saveLogbookEntry(
-      {
-        ...entry,
-        ...inlineDraft,
-        entryDate: entry.entryDate || entry.date,
-      },
-      entry.id
-    );
-    setInlineRowId(null);
-    setInlineDraft(null);
+    if (!inlineDraft || inlineSaving) return;
+    if (inlineDraft.endingKm < inlineDraft.startingKm) {
+      setInlineError('Ending KM cannot be less than Starting KM.');
+      return;
+    }
+    setInlineSaving(true);
+    setInlineError(null);
+    try {
+      // Send only editable fields (same contract as the full edit modal) so
+      // saveLogbookEntry recomputes kmDay, unit price, share and totals from
+      // the profile settings instead of replaying stale stored values.
+      await saveLogbookEntry(
+        {
+          vehicleId: entry.vehicleId,
+          vehicleRegNo: entry.vehicleRegNo || entry.vehicleRegistration,
+          driverId: entry.driverId,
+          driverName: entry.driverName,
+          entryDate: entry.entryDate || entry.date,
+          shiftNumber: entry.shiftNumber,
+          odometerCorrectionReason: entry.odometerCorrectionReason,
+          ...inlineDraft,
+        },
+        entry.id
+      );
+      setInlineRowId(null);
+      setInlineDraft(null);
+    } catch (err: any) {
+      setInlineError(err?.message || 'Failed to save changes.');
+    } finally {
+      setInlineSaving(false);
+    }
   };
 
   const handleSaveCustomHeaders = async () => {
@@ -438,9 +416,10 @@ export const LogbookView: React.FC<{
       vehicles,
       drivers,
       logbookEntries,
-      defaultSharePct
+      defaultSharePct,
+      calcOptions
     );
-  }, [csvRawText, vehicles, drivers, logbookEntries, defaultSharePct]);
+  }, [csvRawText, vehicles, drivers, logbookEntries, defaultSharePct, calcOptions]);
 
   const validImportRows = useMemo(
     () => parsedImportRows.filter((r) => r.valid),
@@ -766,7 +745,10 @@ export const LogbookView: React.FC<{
             Daily Vehicle Logbook &amp; Financial Summaries
           </h2>
           <p className="text-sm text-slate-500">
-            15-Column Standard Ledger · Driver Share ({defaultSharePct}% default) is separated from Operating Expenses.
+            15-Column Standard Ledger · Driver Share ({defaultSharePct}% default){' '}
+            {calcOptions.includeDriverShareInExpenses
+              ? 'is included in Total Expenses.'
+              : 'is separated from Operating Expenses.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -980,7 +962,9 @@ export const LogbookView: React.FC<{
             {formatINR(summaryTotals.driverShare)}
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Excluded from Operating Expenses
+            {calcOptions.includeDriverShareInExpenses
+              ? 'Included in Total Expenses'
+              : 'Excluded from Operating Expenses'}
           </p>
         </div>
 
@@ -992,7 +976,9 @@ export const LogbookView: React.FC<{
             {formatINR(summaryTotals.totalExpenses)}
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Fuel + Red Taxi + Toll + Maint
+            {calcOptions.includeDriverShareInExpenses
+              ? 'Driver Share + Fuel + Red Taxi + Toll + Maint'
+              : 'Fuel + Red Taxi + Toll + Maint'}
           </p>
         </div>
 
@@ -1010,7 +996,9 @@ export const LogbookView: React.FC<{
             {formatINR(summaryTotals.netBusinessEarnings)}
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Earnings − Expenses − Driver Share
+            {calcOptions.includeDriverShareInExpenses
+              ? 'Earnings − Total Expenses'
+              : 'Earnings − Expenses − Driver Share'}
           </p>
         </div>
       </div>
@@ -1047,7 +1035,7 @@ export const LogbookView: React.FC<{
           </div>
 
           {/* Quick Date Range Presets */}
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs max-w-full">
             <span className="text-slate-500 mr-1">Quick Range:</span>
             {[
               { id: 'today', label: 'Today' },
@@ -1274,7 +1262,12 @@ export const LogbookView: React.FC<{
 
                     return (
                       <tr
-                        key={entry.id}
+                        // Remount the row wholesale when entering/leaving inline
+                        // edit: reconciling the editing row's <select>/<input>
+                        // children in place can crash React's commit phase
+                        // (removeChild DOMException) if those nodes were
+                        // touched outside React.
+                        key={`${entry.id}:${isInlineEditing ? 'editing' : 'view'}`}
                         className={`${
                           isInlineEditing
                             ? 'bg-teal-50/70'
@@ -1512,25 +1505,34 @@ export const LogbookView: React.FC<{
                         </td>
                         <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
                           {isInlineEditing ? (
-                            <div className="inline-flex items-center gap-1">
+                            <div className="inline-flex flex-col items-end gap-1">
+                              {inlineError && (
+                                <div className="max-w-[180px] text-[10px] text-red-600 whitespace-normal text-right">
+                                  {inlineError}
+                                </div>
+                              )}
+                              <div className="inline-flex items-center gap-1">
                               <button
                                 type="button"
+                                disabled={inlineSaving}
                                 onClick={() => handleSaveInlineEdit(entry)}
-                                className="px-2 py-1 text-[11px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded"
+                                className="px-2 py-1 text-[11px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded disabled:opacity-50"
                                 title="Save Inline Changes"
                               >
-                                Save
+                                {inlineSaving ? 'Saving…' : 'Save'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
                                   setInlineRowId(null);
                                   setInlineDraft(null);
+                                  setInlineError(null);
                                 }}
                                 className="px-1.5 py-1 text-[11px] text-slate-600 bg-slate-200 hover:bg-slate-300 rounded"
                               >
                                 Cancel
                               </button>
+                              </div>
                             </div>
                           ) : (
                             <div className="inline-flex items-center gap-1">

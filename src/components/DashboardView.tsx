@@ -18,6 +18,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { useFleet } from '../context/FleetContext';
+import { notificationRequest } from '../lib/notificationClient';
 import { NavigationTab } from '../types/fleet';
 import {
   evaluateMilestoneExpiryAlerts,
@@ -69,59 +70,16 @@ export const DashboardView: React.FC<{
   const handleDashboardTestDispatch = async (channel: 'Email' | 'WhatsApp') => {
     setTestAlertBusy(channel);
     try {
-      const itemsPayload = milestoneSchedule.slice(0, 8).map((m) => ({
-        entityLabel: m.targetLabel,
-        documentLabel: m.documentLabel,
-        expiryDate: m.expiryDate,
-        daysRemaining: m.daysRemaining,
-        milestoneWindow: m.milestoneBucket,
-      }));
-
-      const res = await fetch('/api/notifications/test-dispatch', {
+      const data = await notificationRequest('/test-dispatch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel,
-          recipientEmail: alertEmail,
-          whatsappNumber: alertWhatsapp,
-          businessName: profile?.businessName || 'FzeeLog Fleet Operations',
-          accountMode: profile?.accountMode || 'Organization',
-          milestoneDays: profile?.alertMilestonesDays || [10, 5, 1],
-          expiringItems: itemsPayload,
-        }),
+        body: JSON.stringify({ channel, recipientEmail: alertEmail, testOnly: true }),
       });
-      const data = await res.json();
-      const bodyText =
-        data?.dispatchReceipt?.messagePreview ||
-        `FzeeLog 10d/5d/1d Statutory Expiry Alert Test (Insurance, FC, Permit, Driver Licence, Pollution) for ${alertEmail} / +91 ${alertWhatsapp}.`;
-
-      await saveNotificationLog({
-        alertType: 'StatutoryExpiry',
-        severity: 'WARNING',
-        targetLabel:
-          channel === 'Email'
-            ? `Email Test -> ${alertEmail}`
-            : `WhatsApp Test -> +91 ${alertWhatsapp}`,
-        title: `Dashboard Test ${channel} Alert Dispatched (${
-          channel === 'Email' ? alertEmail : alertWhatsapp
-        })`,
-        message: bodyText.slice(0, 900),
-        channel: channel === 'Email' ? 'EmailDigest' : 'WhatsApp',
-        recipientEmail: alertEmail,
-        status: 'Unread',
-      });
-
       setTestAlertFeedback({
         channel,
-        summary:
-          channel === 'Email'
-            ? `Test Email dispatched to ${alertEmail} (10d / 5d / 1d Insurance, FC, Permit, DL & PUC)`
-            : `Test WhatsApp alert dispatched to +91 ${alertWhatsapp} (10d / 5d / 1d Insurance, FC, Permit, DL & PUC)`,
-        whatsappUrl: data?.dispatchReceipt?.whatsappDeepLink,
-        mailtoUrl: data?.dispatchReceipt?.mailtoLink,
+        summary: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}.`,
       });
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      setTestAlertFeedback({ channel, summary: err?.message || 'Could not send. Nothing was sent.' });
     } finally {
       setTestAlertBusy(null);
     }
@@ -269,7 +227,7 @@ export const DashboardView: React.FC<{
               Welcome to FzeeLog — Your Live Fleet &amp; 15-Column Logbook Ledger
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Your authenticated workspace is connected and isolated by Row-Level Security. No live vehicles or daily logbook shifts have been recorded yet. Start by registering your first commercial or personal vehicle, or toggle Demo Preview Mode to inspect a populated Tamil Nadu commercial fleet dataset.
+              Your authenticated workspace is connected and protected by owner-only database security rules. No live vehicles or daily logbook shifts have been recorded yet. Start by registering your first commercial or personal vehicle.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -289,15 +247,7 @@ export const DashboardView: React.FC<{
                 <UserCheck className="w-4 h-4" />
                 Register Drivers
               </button>
-              {!isDemoMode && (
-                <button
-                  type="button"
-                  onClick={() => setIsDemoMode(true)}
-                  className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-                >
-                  Preview Populated Demo Mode
-                </button>
-              )}
+
             </div>
           </div>
         </div>

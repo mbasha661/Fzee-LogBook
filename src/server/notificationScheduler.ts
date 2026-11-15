@@ -175,7 +175,7 @@ export class NotificationScheduler {
   private settings: SchedulerSettings = { ...DEFAULT_SETTINGS };
   private snapshot: SchedulerSnapshot | null = null;
   private log: DeliveryLogEntry[] = [];
-  private pendingRetries: Map<string, { nextAttemptAt: number }> = new Map();
+  private pendingRetries: Map<string, { nextAttemptAt: number; subject: string; body: string }> = new Map();
   private seq = 0;
 
   constructor(
@@ -203,9 +203,9 @@ export class NotificationScheduler {
   /** One scheduler cycle. Safe to call every minute. */
   async tick(): Promise<void> {
     const now = this.now();
-    await this.flushRetries(now);
     const s = this.settings;
-    if (!s.enabled) return;
+    if (!s.enabled || !s.consentGivenAt) return;
+    await this.flushRetries(now);
     if (!this.snapshot) return;
 
     const today = kolkataToday(now);
@@ -290,7 +290,7 @@ export class NotificationScheduler {
   ): Promise<void> {
     for (const channel of this.channels()) {
       const fullKey = `${dedupeKey}:${channel}`;
-      if (this.log.some((l) => l.dedupeKey === fullKey && l.status === 'SENT'))
+      if (this.log.some((l) => l.dedupeKey === fullKey && (l.status === 'SENT' || (l.status === 'FAILED' && l.attempts >= MAX_ATTEMPTS))))
         continue;
       if (this.pendingRetries.has(fullKey)) continue;
       await this.attempt(fullKey, jobType, channel, subject, body, 1);
@@ -361,6 +361,8 @@ export class NotificationScheduler {
       this.pendingRetries.set(fullKey, {
         nextAttemptAt:
           this.now().getTime() + RETRY_BACKOFF_MS[attemptNo - 1],
+        subject,
+        body,
       });
       // retry metadata kept in-memory; attempt number continues from log
     }
@@ -376,8 +378,8 @@ export class NotificationScheduler {
         fullKey,
         entry.jobType,
         entry.channel,
-        entry.detail.split(' -> ')[0] || entry.jobType,
-        '(retry of earlier dispatch)',
+        r.subject,
+        r.body,
         entry.attempts + 1
       );
     }
