@@ -5,6 +5,10 @@ import type {
   SchedulerSnapshot,
   DeliveryLogEntry,
 } from '../server/notificationScheduler';
+import {
+  buildDailySummaryBody,
+  kolkataToday,
+} from '../server/notificationScheduler';
 
 /**
  * Server-side Scheduled Notification Engine panel.
@@ -157,6 +161,33 @@ export const NotificationSchedulerPanel: React.FC = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** One-click free sending: opens the owner's own WhatsApp/email app with
+   *  today's summary already typed. The owner presses send - nothing is
+   *  dispatched automatically and the Meta Cloud API stays off. */
+  const buildClickReport = (): string => {
+    const snap = buildSnapshot();
+    return buildDailySummaryBody(
+      kolkataToday(new Date()),
+      snap.businessName,
+      snap.vehicles,
+      snap.logbookEntries
+    );
+  };
+
+  const onSendWhatsAppClick = () => {
+    const text = buildClickReport();
+    const digits = (settings.whatsappNumber || '').replace(/[^0-9]/g, '');
+    const base = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
+    window.open(`${base}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  const onSendEmailClick = () => {
+    const text = buildClickReport().replace(/\*/g, '');
+    const to = (settings.recipientEmail || '').trim();
+    const subject = `FzeeLogBook Daily Summary - ${kolkataToday(new Date())}`;
+    window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
   };
 
   const statusColor = useMemo(
@@ -347,6 +378,33 @@ export const NotificationSchedulerPanel: React.FC = () => {
           Refresh Delivery Log
         </button>
         {status && <span className={`text-xs font-medium ${statusColor}`}>{status}</span>}
+      </div>
+
+      <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-3 space-y-2">
+        <p className="text-sm font-bold text-slate-800">
+          Send now with one click (free)
+        </p>
+        <p className="text-xs text-slate-600">
+          Opens your own WhatsApp or email app with today's summary already
+          typed in. You press send - nothing is sent automatically, and the
+          automatic Meta Cloud API sending stays off. Uses the recipient email
+          and WhatsApp number above (if the number is blank, WhatsApp lets you
+          pick the contact).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onSendWhatsAppClick}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold"
+          >
+            Open WhatsApp with summary
+          </button>
+          <button
+            onClick={onSendEmailClick}
+            className="px-4 py-2 bg-sky-600 text-white rounded-xl text-sm font-semibold"
+          >
+            Open Email with summary
+          </button>
+        </div>
       </div>
 
       <div className="border border-slate-200 rounded-xl overflow-hidden">
