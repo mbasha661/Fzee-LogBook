@@ -167,6 +167,26 @@ export const NotificationSchedulerPanel: React.FC = () => {
     [status]
   );
 
+  const buildTestMessage = () =>
+    'FzeeLogBook test message: your alert notifications are set up correctly. ' +
+    '(One-click test - free, nothing is sent automatically.)';
+
+  const onTestWhatsApp = () => {
+    const digits = (settings.whatsappNumber || '').replace(/\D/g, '');
+    const text = encodeURIComponent(buildTestMessage());
+    const url = digits
+      ? `https://wa.me/${digits}?text=${text}`
+      : `https://wa.me/?text=${text}`;
+    window.open(url, '_blank', 'noopener');
+  };
+
+  const onTestEmail = () => {
+    const subject = encodeURIComponent('FzeeLogBook test message');
+    const body = encodeURIComponent(buildTestMessage());
+    const to = settings.recipientEmail || '';
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  };
+
   return (
     <section className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
       <div>
@@ -347,6 +367,32 @@ export const NotificationSchedulerPanel: React.FC = () => {
           Refresh Delivery Log
         </button>
         {status && <span className={`text-xs font-medium ${statusColor}`}>{status}</span>}
+      </div>
+
+      <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 space-y-2">
+        <p className="text-sm font-semibold text-emerald-900">
+          Test send (free, one click)
+        </p>
+        <p className="text-xs text-emerald-800">
+          Sends one short test message right now through your own WhatsApp and
+          email app - completely free, no paid API, and nothing is sent
+          automatically. WhatsApp opens with the message prefilled; Email
+          opens your mail app with the message prefilled.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onTestWhatsApp}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold"
+          >
+            Test WhatsApp
+          </button>
+          <button
+            onClick={onTestEmail}
+            className="px-4 py-2 bg-sky-600 text-white rounded-xl text-sm font-semibold"
+          >
+            Test Email
+          </button>
+        </div>
       </div>
 
       <div className="border border-slate-200 rounded-xl overflow-hidden">
