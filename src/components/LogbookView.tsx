@@ -98,6 +98,9 @@ export const LogbookView: React.FC<{
     mailtoLink?: string;
   } | null>(null);
 
+  const quickTestMessage =
+    'FzeeLogBook test message: your alert notifications are set up correctly. (One-click test - free, nothing is sent automatically.)';
+
   const handleQuickTestAlert = async (
     channel: 'Email' | 'WhatsApp' | 'Both'
   ) => {
@@ -105,33 +108,53 @@ export const LogbookView: React.FC<{
     setQuickTestBanner(null);
     try {
       const targetEmail = profile?.alertEmail || '';
-      const targetWa = profile?.whatsappNumber || '';
+      const targetWa = (profile?.whatsappNumber || '').replace(/\D/g, '');
       const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(targetEmail);
-      if ((channel === 'Email' || channel === 'Both') && !emailOk) {
+      if (channel === 'WhatsApp' || channel === 'Both') {
+        if (!targetWa) {
+          setQuickTestBanner({
+            message:
+              'Set a WhatsApp number in Settings before sending a test alert.',
+          });
+          return;
+        }
+        const text = encodeURIComponent(quickTestMessage);
+        window.open(
+          `https://wa.me/${targetWa}?text=${text}`,
+          '_blank',
+          'noopener'
+        );
         setQuickTestBanner({
           message:
-            'Set a valid Alert E-Mail in Settings before sending a test mail.',
+            'WhatsApp opened with the test message ready - just press Send there. Free, no Meta API, nothing is sent automatically.',
         });
-        return;
+        if (channel === 'WhatsApp') return;
       }
-      if ((channel === 'WhatsApp' || channel === 'Both') && !targetWa) {
-        setQuickTestBanner({
-          message:
-            'Set a WhatsApp number in Settings before sending a test alert.',
-        });
-        return;
+      if (channel === 'Email' || channel === 'Both') {
+        if (!emailOk) {
+          setQuickTestBanner({
+            message:
+              'Set a valid Alert E-Mail in Settings before sending a test mail.',
+          });
+          return;
+        }
+        try {
+          const data = await notificationRequest('/test-dispatch', {
+            method: 'POST',
+            body: JSON.stringify({ channel: 'Email', recipientEmail: targetEmail, testOnly: true }),
+          });
+          setQuickTestBanner({
+            message: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}. Check your inbox and spam folder.`,
+          });
+        } catch (err: any) {
+          const subject = encodeURIComponent('FzeeLogBook test message');
+          const body = encodeURIComponent(quickTestMessage);
+          window.location.href = `mailto:${targetEmail}?subject=${subject}&body=${body}`;
+          setQuickTestBanner({
+            message: `Direct send failed (${err?.message || 'server not reachable'}). Your mail app opened with the test message ready - press Send there. Free, nothing is sent automatically.`,
+          });
+        }
       }
-      const data = await notificationRequest('/test-dispatch', {
-        method: 'POST',
-        body: JSON.stringify({ channel, recipientEmail: targetEmail, testOnly: true }),
-      });
-      setQuickTestBanner({
-        message: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}. Check your inbox and spam folder.`,
-      });
-    } catch (err: any) {
-      setQuickTestBanner({
-        message: err?.message || 'Could not send. Nothing was sent.',
-      });
     } finally {
       setQuickTestBusy(null);
     }

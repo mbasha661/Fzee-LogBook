@@ -67,19 +67,48 @@ export const DashboardView: React.FC<{
     [activeVehicles, drivers]
   );
 
+  const dashboardTestMessage =
+    'FzeeLogBook test message: your alert notifications are set up correctly. (One-click test - free, nothing is sent automatically.)';
+
   const handleDashboardTestDispatch = async (channel: 'Email' | 'WhatsApp') => {
     setTestAlertBusy(channel);
     try {
-      const data = await notificationRequest('/test-dispatch', {
-        method: 'POST',
-        body: JSON.stringify({ channel, recipientEmail: alertEmail, testOnly: true }),
-      });
-      setTestAlertFeedback({
-        channel,
-        summary: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}.`,
-      });
-    } catch (err: any) {
-      setTestAlertFeedback({ channel, summary: err?.message || 'Could not send. Nothing was sent.' });
+      if (channel === 'WhatsApp') {
+        const digits = (alertWhatsapp || '').replace(/\D/g, '');
+        if (!digits) {
+          setTestAlertFeedback({ channel, summary: 'Set a WhatsApp number in Settings before sending a test alert.' });
+          return;
+        }
+        const text = encodeURIComponent(dashboardTestMessage);
+        window.open(`https://wa.me/${digits}?text=${text}`, '_blank', 'noopener');
+        setTestAlertFeedback({
+          channel,
+          summary: 'WhatsApp opened with the test message ready - just press Send there. Free, no Meta API, nothing is sent automatically.',
+        });
+        return;
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmail)) {
+        setTestAlertFeedback({ channel, summary: 'Set a valid Alert E-Mail in Settings before sending a test mail.' });
+        return;
+      }
+      try {
+        const data = await notificationRequest('/test-dispatch', {
+          method: 'POST',
+          body: JSON.stringify({ channel: 'Email', recipientEmail: alertEmail, testOnly: true }),
+        });
+        setTestAlertFeedback({
+          channel,
+          summary: `${data.message || 'Email accepted by the provider.'} Sent to ${data.recipientEmail}.`,
+        });
+      } catch (err: any) {
+        const subject = encodeURIComponent('FzeeLogBook test message');
+        const body = encodeURIComponent(dashboardTestMessage);
+        window.location.href = `mailto:${alertEmail}?subject=${subject}&body=${body}`;
+        setTestAlertFeedback({
+          channel,
+          summary: `Direct send failed (${err?.message || 'server not reachable'}). Your mail app opened with the test message ready - press Send there.`,
+        });
+      }
     } finally {
       setTestAlertBusy(null);
     }
